@@ -54,10 +54,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
       - name: Install dependencies
         working-directory: backend
-        run: |
-          uv sync
+        run: uv sync
 
       - name: Run backend tests
         working-directory: backend
