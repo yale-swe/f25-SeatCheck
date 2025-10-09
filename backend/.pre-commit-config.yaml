@@ -13,7 +13,9 @@ repos:
     rev: v6.0.0 # Use the ref you want to point at
     hooks:
       - id: trailing-whitespace
+        exclude: ^README\.md$
       - id: end-of-file-fixer
+        exclude: ^README\.md$
 
   - repo: local
     hooks:
