@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install uv (fast Python environment manager)
-        run: pip install uv
+        run: cd backend || pip install uv
 
       - name: Install pre-commit
         run: pip install pre-commit
