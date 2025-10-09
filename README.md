@@ -73,7 +73,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
     - `mypy` for strict type checking (`uv run mypy --pretty --strict src`)  
   - **`pyproject.toml`** → Defines project metadata, Python version (≥3.12), and development dependencies (`mypy`, `pytest`, `pre-commit`) for reproducibility.  
   - **`main.py`** → Minimal executable script printing `"hello"`; serves as a placeholder for the future FastAPI entry point.  
-  - **`tests/test_example.py`** → Sample `pytest` file confirming that unit testing and environment setup work correctly.  
+  - **`tests/test_example.py`** → Sample `pytest` file confirming that unit testing and environment setup work correctly (temporary due to pre-commit).  
 
 - **Functionality**:  
   - Provides automated linting, formatting, and type checking for all backend code.  
