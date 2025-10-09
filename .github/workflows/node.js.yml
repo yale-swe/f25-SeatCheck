@@ -55,4 +55,4 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        run: pytest -v
+        run: uv run pytest -v
