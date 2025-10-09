@@ -19,6 +19,13 @@ repos:
     hooks:
       - id: mypy-uv
         name: mypy
-        entry: uv run mypy --pretty --strict src
+        entry: bash -c 'cd backend && uv run mypy --pretty --strict src'
         language: system
         pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: bash -c 'cd backend && uv run pytest -q'
+        language: system
+        pass_filenames: false
+        stages: [push]
