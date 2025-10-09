@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
   pull_request:
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v2
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v2
@@ -82,12 +82,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install dependencies
-        working-directory: frontend
+        working-directory: seat-check
         run: npm ci
 
       - name: Run frontend tests
-        working-directory: frontend
+        working-directory: seat-check
         run: npm test -- --watchAll=false
