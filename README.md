@@ -87,10 +87,33 @@ This README documents our chosen tech stack, repo structure, setup instructions,
   4. Run type checks → `uv run mypy --pretty --strict src`
   5. Run tests → `pytest`
   6. Execute backend script → `python main.py`
+ 
+---
+ 
+### 2. **Frontend (`seat-check/`)**
+
+**Purpose**: Establishes the testing foundation for the React Native (Expo) mobile app.
+
+**Key Files & Configuration**:
+- `package.json` → defines test script with **Vitest** (`"test": "vitest"`).
+- `tsconfig.json`, `eslint.config.js` → shared TypeScript + lint config.
+- (Add tests under `__tests__/` or alongside components as `*.test.ts` / `*.test.tsx`.)
+
+**Functionality**:
+- Enables unit tests for TypeScript utilities and React Native components.
+- Integrates with CI (GitHub Actions runs `npm test` in `seat-check/`).
+- Can be extended with `@testing-library/react-native` to test screens, navigation, and interactions.
+- Mock backend calls to isolate UI behavior.
+
+**Usage**:
+1. Navigate to the mobile app: `bash`, `cd seat-check`
+2. Install dependencies: `npm install`
+3. Run tests: `npm test`
+4. Optional watch / coverage: `npm test -- --watch`, `npx vitest run --coverage`
 
 ---
 
-### 2. **Mobile Application (`f25-SeatCheck/seat-check/`)**
+### 3. **Mobile Application (`f25-SeatCheck/seat-check/`)**
 - **Purpose**: Houses the React Native (Expo) mobile app.
 - **Key Directories**:
   - `app/` → Screens, layouts, navigation
@@ -103,7 +126,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 
 ---
 
-### 3. **Root (`README.md`)**
+### 4. **Root (`README.md`)**
 - Provides project overview + onboarding instructions.
 - Keeps high-level docs accessible for new contributors.
 ---
