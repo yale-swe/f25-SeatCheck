@@ -90,4 +90,4 @@ jobs:
 
       - name: Run frontend tests
         working-directory: seat-check
-        run: npm test -- --watchAll=false
+        run: npm test -- --run
