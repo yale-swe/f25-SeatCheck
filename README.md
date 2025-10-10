@@ -87,9 +87,9 @@ This README documents our chosen tech stack, repo structure, setup instructions,
   4. Run type checks → `uv run mypy --pretty --strict src`
   5. Run tests → `pytest`
   6. Execute backend script → `python main.py`
- 
+
 ---
- 
+
 ### 2. **Frontend (`seat-check/`)**
 
 **Purpose**: Establishes the testing foundation for the React Native (Expo) mobile app.
