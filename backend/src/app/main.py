@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
+from typing import Any
 
 
 app = FastAPI(title="SeatCheck API", version="0.1.0")
@@ -16,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class Venue(BaseModel):
     id: int
     name: str
@@ -23,30 +25,48 @@ class Venue(BaseModel):
     lon: float
     availability: float | None = None  # 0..1 (1 = very available)
 
+
 VENUES: list[Venue] = [
     Venue(id=1, name="Bass Library", lat=41.3083, lon=-72.9289, availability=0.7),
-    Venue(id=2, name="Sterling Memorial Library", lat=41.3102, lon=-72.9276, availability=0.4),
+    Venue(
+        id=2,
+        name="Sterling Memorial Library",
+        lat=41.3102,
+        lon=-72.9276,
+        availability=0.4,
+    ),
 ]
+
+
 class CheckIn(BaseModel):
     venue_id: int
     occupancy: int = Field(ge=0, le=3)  # 0=empty ... 3=packed
-    noise: int = Field(ge=0, le=3)      # 0=quiet ... 3=loud
+    noise: int = Field(ge=0, le=3)  # 0=quiet ... 3=loud
 
-CHECKINS: list[dict] = []  # [{venue_id, occupancy, noise, ts}]
+
+CHECKINS: list[dict[str, Any]] = []  # [{venue_id, occupancy, noise, ts}]
+
 
 @app.post("/checkins")
-def create_checkin(ci: CheckIn):
-    CHECKINS.append({"venue_id": ci.venue_id, "occupancy": ci.occupancy, "noise": ci.noise,
-                     "ts": datetime.now(timezone.utc)})
+def create_checkin(ci: CheckIn) -> dict[str, bool]:
+    CHECKINS.append(
+        {
+            "venue_id": ci.venue_id,
+            "occupancy": ci.occupancy,
+            "noise": ci.noise,
+            "ts": datetime.now(timezone.utc),
+        }
+    )
     _recompute_aggregates()
     return {"ok": True}
 
-def _recompute_aggregates():
+
+def _recompute_aggregates() -> None:
     # simple time-decayed average of availability = 1 - occupancy/3 (half-life 30 min)
     now = datetime.now(timezone.utc)
     half_life = timedelta(minutes=30)
     tau = half_life / 0.69314718056  # ln(2)
-    by_venue: dict[int, list[tuple[float,float]]] = {}
+    by_venue: dict[int, list[tuple[float, float]]] = {}
     for row in CHECKINS:
         dt = (now - row["ts"]).total_seconds()
         w = pow(2.718281828, -(dt / tau.total_seconds()))
@@ -60,28 +80,38 @@ def _recompute_aggregates():
         den = sum(w for _, w in pairs)
         v.availability = max(0.0, min(1.0, num / den))
 
+
 @app.get("/health")
-def health():
+def health() -> dict[str, str]:
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
+
 @app.get("/venues", response_model=list[Venue])
-def list_venues():
+def list_venues() -> list[Venue]:
     return VENUES
 
+
 @app.get("/venues.geojson")
-def venues_geojson():
+def venues_geojson() -> JSONResponse:
     features = []
     for v in VENUES:
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [v.lon, v.lat]},
-            "properties": {"id": v.id, "name": v.name, "availability": v.availability},
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [v.lon, v.lat]},
+                "properties": {
+                    "id": v.id,
+                    "name": v.name,
+                    "availability": v.availability,
+                },
+            }
+        )
     return JSONResponse({"type": "FeatureCollection", "features": features})
+
 
 # Simple desktop map at /map using Leaflet
 @app.get("/map", response_class=HTMLResponse)
-def web_map():
+def web_map() -> HTMLResponse:
     html = """
 <!DOCTYPE html>
 <html>
