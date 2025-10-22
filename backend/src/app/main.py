@@ -32,10 +32,10 @@ class CheckIn(BaseModel):
     occupancy: int = Field(ge=0, le=3)  # 0=empty ... 3=packed
     noise: int = Field(ge=0, le=3)      # 0=quiet ... 3=loud
 
-CHECKINS: list[dict[str, int | datetime]] = []  # [{venue_id, occupancy, noise, ts}]
+CHECKINS: list[dict[str, int | datetime | timedelta]] = []  # [{venue_id, occupancy, noise, ts}]
 
 @app.post("/checkins")
-def create_checkin(ci: CheckIn):
+def create_checkin(ci: CheckIn) -> dict[str, bool]:
     CHECKINS.append({"venue_id": ci.venue_id, "occupancy": ci.occupancy, "noise": ci.noise,
                      "ts": datetime.now(timezone.utc)})
     _recompute_aggregates()
@@ -61,7 +61,7 @@ def _recompute_aggregates() -> None:
         v.availability = max(0.0, min(1.0, num / den))
 
 @app.get("/health")
-def health() -> dict:
+def health() -> dict[str, str]:
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/venues", response_model=list[Venue])
