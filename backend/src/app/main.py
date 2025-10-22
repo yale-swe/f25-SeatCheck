@@ -32,7 +32,7 @@ class CheckIn(BaseModel):
     occupancy: int = Field(ge=0, le=3)  # 0=empty ... 3=packed
     noise: int = Field(ge=0, le=3)      # 0=quiet ... 3=loud
 
-CHECKINS: list[dict[str, int | datetime | timedelta]] = []  # [{venue_id, occupancy, noise, ts}]
+CHECKINS: list[dict[str, any]] = []  # [{venue_id, occupancy, noise, ts}]
 
 @app.post("/checkins")
 def create_checkin(ci: CheckIn) -> dict[str, bool]:
