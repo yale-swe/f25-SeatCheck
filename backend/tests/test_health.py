@@ -1,2 +1,2 @@
 def test_hello() -> None:
-    assert(1 == 1)
+    assert 1 == 1
