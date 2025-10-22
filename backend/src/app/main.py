@@ -32,7 +32,7 @@ class CheckIn(BaseModel):
     occupancy: int = Field(ge=0, le=3)  # 0=empty ... 3=packed
     noise: int = Field(ge=0, le=3)      # 0=quiet ... 3=loud
 
-CHECKINS: list[dict] = []  # [{venue_id, occupancy, noise, ts}]
+CHECKINS: list[dict[str, int | datetime]] = []  # [{venue_id, occupancy, noise, ts}]
 
 @app.post("/checkins")
 def create_checkin(ci: CheckIn):
@@ -41,7 +41,7 @@ def create_checkin(ci: CheckIn):
     _recompute_aggregates()
     return {"ok": True}
 
-def _recompute_aggregates():
+def _recompute_aggregates() -> None:
     # simple time-decayed average of availability = 1 - occupancy/3 (half-life 30 min)
     now = datetime.now(timezone.utc)
     half_life = timedelta(minutes=30)
@@ -61,15 +61,15 @@ def _recompute_aggregates():
         v.availability = max(0.0, min(1.0, num / den))
 
 @app.get("/health")
-def health():
+def health() -> dict:
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/venues", response_model=list[Venue])
-def list_venues():
+def list_venues() -> list[Venue]:
     return VENUES
 
 @app.get("/venues.geojson")
-def venues_geojson():
+def venues_geojson() -> JSONResponse:
     features = []
     for v in VENUES:
         features.append({
@@ -81,7 +81,7 @@ def venues_geojson():
 
 # Simple desktop map at /map using Leaflet
 @app.get("/map", response_class=HTMLResponse)
-def web_map():
+def web_map() -> HTMLResponse:
     html = """
 <!DOCTYPE html>
 <html>
