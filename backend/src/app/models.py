@@ -1,7 +1,7 @@
 """Database models for SeatCheck application."""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -11,7 +11,7 @@ from app.database import Base
 
 class User(Base):
     """User model for Yale students authenticated via CAS.
-    
+
     Attributes:
         id: Unique identifier
         netid: Yale NetID from CAS authentication
@@ -27,13 +27,17 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
     # CAS authentication
-    netid: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    netid: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False, index=True
+    )
 
     # Profile
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Privacy settings
-    anonymize_checkins: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    anonymize_checkins: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -60,7 +64,7 @@ class User(Base):
 
 class Venue(Base):
     """Venue model representing a study location.
-    
+
     Attributes:
         id: Unique identifier
         name: Name of the venue (e.g., "Bass Library")
@@ -92,9 +96,9 @@ class Venue(Base):
     # Optional fields
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     capacity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    amenities: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    accessibility: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    opening_hours: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    amenities: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    accessibility: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    opening_hours: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -130,7 +134,7 @@ class Venue(Base):
 
 class CheckIn(Base):
     """CheckIn model representing a venue occupancy report.
-    
+
     Attributes:
         id: Unique identifier
         venue_id: Foreign key to venues table
@@ -179,4 +183,3 @@ class CheckIn(Base):
             f"<CheckIn(id={self.id}, venue_id={self.venue_id}, "
             f"occupancy={self.occupancy}, noise={self.noise})>"
         )
-

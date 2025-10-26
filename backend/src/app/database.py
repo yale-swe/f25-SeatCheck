@@ -1,7 +1,9 @@
 """Database connection and session management."""
 
+from typing import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
@@ -27,12 +29,12 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """Dependency to get database session.
-    
+
     Yields:
         Database session that will be automatically closed after use.
-        
+
     Usage:
         @app.get("/items")
         def get_items(db: Session = Depends(get_db)):
@@ -43,4 +45,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

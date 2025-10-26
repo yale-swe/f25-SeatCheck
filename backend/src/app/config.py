@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Application settings.
-    
+
     For local development: Set values in .env file
     For production: Set as environment variables on hosting platform
     """
@@ -43,11 +43,10 @@ settings = Settings()
 
 def get_cors_origins() -> list[str]:
     """Parse CORS origins string into list.
-    
+
     Returns:
         List of allowed origins. ["*"] if wildcard, otherwise comma-separated list.
     """
     if settings.allowed_origins == "*":
         return ["*"]
     return [origin.strip() for origin in settings.allowed_origins.split(",")]
-
