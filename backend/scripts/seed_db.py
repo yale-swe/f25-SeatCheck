@@ -38,7 +38,12 @@ VENUES = [
         "lon": -72.9276,
         "description": "Gothic cathedral-style library, quiet study atmosphere",
         "capacity": 800,
-        "amenities": ["WiFi", "Power outlets", "Silent study areas", "Research collections"],
+        "amenities": [
+            "WiFi",
+            "Power outlets",
+            "Silent study areas",
+            "Research collections",
+        ],
         "accessibility": ["Wheelchair accessible", "Elevator"],
         "opening_hours": {
             "mon": "08:30-00:00",
@@ -108,14 +113,14 @@ def seed_venues():
         for venue_data in VENUES:
             venue = Venue(**venue_data)
             db.add(venue)
-        
+
         db.commit()
         print(f"Successfully seeded {len(VENUES)} venues!")
-        
+
         # Display added venues
         for venue in VENUES:
             print(f"  - {venue['name']} ({venue['category']})")
-    
+
     except Exception as e:
         print(f"Error seeding database: {e}")
         db.rollback()
@@ -128,4 +133,3 @@ if __name__ == "__main__":
     print("Seeding database with Yale study venues...")
     seed_venues()
     print("Done!")
-
