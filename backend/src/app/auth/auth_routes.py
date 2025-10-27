@@ -1,5 +1,3 @@
-
-
 from fastapi import APIRouter
 from app.auth import cas
 

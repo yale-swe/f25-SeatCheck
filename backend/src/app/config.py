@@ -24,19 +24,19 @@ class Settings(BaseSettings):
     app_title: str = "SeatCheck API"
     app_version: str = "0.1.0"
     debug: bool = True
-    
-    #cas auth
+
+    # cas auth
     cas_base_url: str = "https://secure.its.yale.edu/cas"
     cas_login_route: str = "/login"
     cas_logout_route: str = "/logout"
-    frontend_url: str  = "http://localhost:3000"
-    
-    #session auth
+    frontend_url: str = "http://localhost:3000"
+
+    # session auth
     secret_key: str = "this is secret"
     session_cookie_name: str = "seatcheck_session"
-    session_expire_minutes: int = 60 * 24 # 24 minutes
+    session_expire_minutes: int = 60 * 24  # 24 minutes
     environment: str = "development"
-    
+
     # CORS Configuration
     # For local dev: Use "*" to allow all origins
     # For production: Set to specific frontend URL
