@@ -5,11 +5,13 @@
 ---
 
 ## Project Overview
+
 SeatCheck is designed to help Yale students find the best study spots on campus—whether they’re looking for a quiet room in Sterling or a collaborative table in Bass. Inspired by a “Waze for studying,” SeatCheck uses student check-ins and campus data to generate a live heatmap of study areas, displaying occupancy, noise levels, and available amenities.
 
 ---
 
 ## Long-term Vision
+
 - Real-time study spot maps with occupancy and noise data
 - Social features like friend lists and optional location sharing
 - Gamification with badges, leaderboards, and profile customization
@@ -21,6 +23,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 ---
 
 ## Team Members
+
 - **Snikitha Banda**
 - **Kashvi Pundir**
 - **David Cho**
@@ -33,27 +36,32 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 ## Tech Stack
 
 ### Frontend
+
 - **React Native with Expo** → Cross-platform mobile interface (iOS + Android)
 - **react-native-maps + Google Maps API** → Geospatial visualization + location services
 - **TypeScript** → Type safety and maintainability
 
 ### Backend
+
 - **FastAPI** → Asynchronous Python web framework
 - **RESTful endpoints** for locations, check-ins, and analytics
 - Built-in interactive API docs via Swagger (`/docs`)
 - **Google Maps Web APIs proxying** for Places, Geocoding, and Directions (keys secured)
 
 ### Database
+
 - **PostgreSQL** → Relational database for structured study spot data
 - Stores locations, user check-ins, occupancy levels, and noise
 - **PostGIS extension** → Enables geospatial queries (e.g., nearby locations, clustering)
 
 ### Authentication
+
 - **Yale CAS (Central Authentication Service)** planned for secure student logins
 - Current skeleton includes a placeholder login screen
 - Future: CAS gateway issues JWTs for authenticated API access
 
 ### Real-Time Updates
+
 - **WebSockets (FastAPI)** → Broadcasts new check-ins and updates to all clients
 - Powers live occupancy heatmaps
 
@@ -64,6 +72,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 ---
 
 ### 1. **Backend (`backend/`)**
+
 - **Purpose**: Establishes the Python backend foundation.
 
 - **Key Files & Configuration**:
@@ -82,7 +91,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 
 - **Usage**:
   1. Navigate to the backend directory → `cd backend`
-  2. Install dependencies → `uv sync` *(or `pip install -r requirements.txt`)*
+  2. Install dependencies → `uv sync` _(or `pip install -r requirements.txt`)_
   3. Enable pre-commit hooks → `pre-commit install`
   4. Run type checks → `uv run mypy --pretty --strict src`
   5. Run tests → `pytest`
@@ -95,17 +104,20 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 **Purpose**: Establishes the testing foundation for the React Native (Expo) mobile app.
 
 **Key Files & Configuration**:
+
 - `package.json` → defines test script with **Vitest** (`"test": "vitest"`).
 - `tsconfig.json`, `eslint.config.js` → shared TypeScript + lint config.
 - (Add tests under `__tests__/` or alongside components as `*.test.ts` / `*.test.tsx`.)
 
 **Functionality**:
+
 - Enables unit tests for TypeScript utilities and React Native components.
 - Integrates with CI (GitHub Actions runs `npm test` in `seat-check/`).
 - Can be extended with `@testing-library/react-native` to test screens, navigation, and interactions.
 - Mock backend calls to isolate UI behavior.
 
 **Usage**:
+
 1. Navigate to the mobile app: `bash`, `cd seat-check`
 2. Install dependencies: `npm install`
 3. Run tests: `npm test`
@@ -114,6 +126,7 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 ---
 
 ### 3. **Mobile Application (`f25-SeatCheck/seat-check/`)**
+
 - **Purpose**: Houses the React Native (Expo) mobile app.
 - **Key Directories**:
   - `app/` → Screens, layouts, navigation
@@ -127,6 +140,8 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 ---
 
 ### 4. **Root (`README.md`)**
+
 - Provides project overview + onboarding instructions.
 - Keeps high-level docs accessible for new contributors.
+
 ---
