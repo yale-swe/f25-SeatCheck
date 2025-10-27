@@ -12,6 +12,8 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "alembic>=1.14.0",
     "pydantic-settings>=2.7.1",
+    "httpx>=0.24.0",
+    "itsdangerous>=2.1.2",
 ]
 
 [tool.setuptools.packages.find]

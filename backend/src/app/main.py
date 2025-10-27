@@ -2,16 +2,27 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from app.auth import auth_routes
+from app.config import settings, get_cors_origins
+from starlette.middleware.sessions import SessionMiddleware
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
 
 app = FastAPI(title="SeatCheck API", version="0.1.0")
 
+# Session middleware (stores session in signed cookie). Requires `secret_key`.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie=settings.session_cookie_name,
+    max_age=int(settings.session_expire_minutes) * 60,
+)
+
 # DEV: open CORS so Expo/web can hit the API from localhost
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later
+    allow_origins=get_cors_origins(),  # tighten later via settings
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,6 +56,13 @@ class CheckIn(BaseModel):
 
 
 CHECKINS: list[dict[str, Any]] = []  # [{venue_id, occupancy, noise, ts}]
+
+app.include_router(auth_routes.router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    return {"message": "SeatCheck backend running "}
 
 
 @app.post("/checkins")
