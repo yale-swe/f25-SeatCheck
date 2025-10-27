@@ -59,8 +59,9 @@ CHECKINS: list[dict[str, Any]] = []  # [{venue_id, occupancy, noise, ts}]
 
 app.include_router(auth_routes.router)
 
+
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     return {"message": "SeatCheck backend running "}
 
 

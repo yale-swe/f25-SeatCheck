@@ -1,13 +1,16 @@
-
 import httpx
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from app.config import settings
+from typing import Any
 
 router = APIRouter()
 
+
 @router.get("/cas")
-async def cas_login(request: Request, ticket: str = None, redirect: str = None):
+async def cas_login(
+    request: Request, ticket: str | None = None, redirect: str | None = None
+) -> Any:
     """
     Entry point for CAS login. Redirects to Yale CAS if no ticket is provided.
     After CAS redirects back, we verify the ticket and store session data.
@@ -24,6 +27,7 @@ async def cas_login(request: Request, ticket: str = None, redirect: str = None):
         if "authenticationSuccess" in response.text:
             # extr user NetID
             import re
+
             match = re.search(r"<cas:user>(.*?)</cas:user>", response.text)
             netid = match.group(1) if match else None
 
@@ -39,16 +43,18 @@ async def cas_login(request: Request, ticket: str = None, redirect: str = None):
     cas_login_url = f"{settings.cas_base_url}/login?service={service_url}"
     return RedirectResponse(url=cas_login_url)
 
-#check if user is authenticated
+
+# check if user is authenticated
 @router.get("/check")
-async def check_auth(request: Request):
+async def check_auth(request: Request) -> dict[str, bool]:
     user = request.session.get("user")
     if user:
         return {"auth": True, "user": user}
     return {"auth": False}
 
-#log out
+
+# log out
 @router.get("/logout")
-async def logout(request: Request):
+async def logout(request: Request) -> dict[str, bool]:
     request.session.clear()
     return {"success": True}
