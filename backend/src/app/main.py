@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from typing import Any
+from app.models.location import Venue
 
 
 app = FastAPI(title="SeatCheck API", version="0.1.0")
@@ -16,14 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-class Venue(BaseModel):
-    id: int
-    name: str
-    lat: float
-    lon: float
-    availability: float | None = None  # 0..1 (1 = very available)
 
 
 VENUES: list[Venue] = [
