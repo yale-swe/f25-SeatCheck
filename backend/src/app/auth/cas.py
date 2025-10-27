@@ -46,11 +46,11 @@ async def cas_login(
 
 # check if user is authenticated
 @router.get("/check")
-async def check_auth(request: Request) -> dict[str, bool]:
+async def check_auth(request: Request) -> dict[str, Any]:
     user = request.session.get("user")
     if user:
         return {"auth": True, "user": user}
-    return {"auth": False}
+    return {"auth": False, "user": None}
 
 
 # log out
