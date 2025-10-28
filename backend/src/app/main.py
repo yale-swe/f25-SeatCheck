@@ -1,10 +1,24 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from typing import Any
-from app.models.location import Venue
+from sqlalchemy.orm import Session
+
+from app.models import Venue as VenueModel
+from app.schemas import CheckInCreate, CheckInResponse, VenueStatsResponse
+from app.database import get_db
+from app.crud import checkins as crud_checkins
+
+
+# Pydantic model for in-memory venues (temporary, used by legacy endpoints)
+class Venue(BaseModel):
+    id: int
+    name: str
+    lat: float
+    lon: float
+    availability: float | None = None  # 0..1 (1 = very available)
 
 
 app = FastAPI(title="SeatCheck API", version="0.1.0")
@@ -77,6 +91,100 @@ def _recompute_aggregates() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+
+
+# ============================================================================
+# Check-In Endpoints (API v1)
+# ============================================================================
+
+
+@app.post(
+    "/api/v1/checkins",
+    response_model=CheckInResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Check-Ins"],
+)
+def create_checkin(
+    checkin: CheckInCreate,
+    db: Session = Depends(get_db),
+) -> CheckInResponse:
+    """Create a new check-in for a venue.
+    
+    Records user-reported occupancy and noise levels for a specific venue.
+    
+    Args:
+        checkin: Check-in data (venue_id, occupancy, noise)
+        db: Database session (injected)
+    
+    Returns:
+        Created check-in with ID and timestamp
+    
+    Raises:
+        404: If venue doesn't exist
+        422: If validation fails (occupancy/noise not in 0-5 range)
+    """
+    # TODO: Replace with real user authentication
+    # For now, use a mock user_id
+    mock_user_id = 1
+    
+    try:
+        db_checkin = crud_checkins.create_checkin(
+            db=db,
+            checkin_data=checkin,
+            user_id=mock_user_id,
+        )
+        return CheckInResponse.model_validate(db_checkin)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+
+@app.get(
+    "/api/v1/venues/{venue_id}/stats",
+    response_model=VenueStatsResponse,
+    tags=["Venues"],
+)
+def get_venue_stats(
+    venue_id: int,
+    minutes: int = 2,
+    db: Session = Depends(get_db),
+) -> VenueStatsResponse:
+    """Get aggregated statistics for a venue.
+    
+    Returns average occupancy and noise levels from recent check-ins.
+    
+    Args:
+        venue_id: ID of the venue
+        minutes: Time window in minutes (default: 2)
+        db: Database session (injected)
+    
+    Returns:
+        Venue statistics with averages and check-in count
+    
+    Raises:
+        404: If venue doesn't exist
+    """
+    # Verify venue exists
+    venue = db.query(VenueModel).filter(VenueModel.id == venue_id).first()
+    if not venue:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Venue with id {venue_id} not found",
+        )
+    
+    # Get statistics
+    stats = crud_checkins.get_venue_stats(db=db, venue_id=venue_id, minutes=minutes)
+    
+    return VenueStatsResponse(
+        venue_id=venue_id,
+        avg_occupancy=stats["avg_occupancy"],
+        avg_noise=stats["avg_noise"],
+        checkin_count=stats["checkin_count"],
+        time_window_minutes=minutes,
+        last_updated=datetime.now(timezone.utc),
+    )
 
 
 @app.get("/venues", response_model=list[Venue])

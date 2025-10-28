@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from app.database import SessionLocal
-from app.models import Venue
+from app.models import Venue, User
 
 # Yale study venues
 VENUES = [
@@ -99,6 +99,35 @@ VENUES = [
 ]
 
 
+def seed_users():
+    """Add test user to database."""
+    db = SessionLocal()
+    try:
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.id == 1).first()
+        if existing_user:
+            print(f"Test user already exists: {existing_user.netid}")
+            return
+        
+        # Create test user
+        test_user = User(
+            id=1,
+            netid="test_user",
+            display_name="Test User",
+            anonymize_checkins=True,
+        )
+        db.add(test_user)
+        db.commit()
+        print(f"Successfully created test user (id=1, netid=test_user)")
+    
+    except Exception as e:
+        print(f"Error creating test user: {e}")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def seed_venues():
     """Add initial Yale venues to database."""
     db = SessionLocal()
@@ -106,7 +135,7 @@ def seed_venues():
         # Check if venues already exist
         existing_count = db.query(Venue).count()
         if existing_count > 0:
-            print(f"Database already has {existing_count} venues. Skipping seed.")
+            print(f"Database already has {existing_count} venues. Skipping venue seed.")
             return
 
         # Add venues
@@ -130,6 +159,9 @@ def seed_venues():
 
 
 if __name__ == "__main__":
-    print("Seeding database with Yale study venues...")
+    print("Seeding database...")
+    print("\n1. Creating test user...")
+    seed_users()
+    print("\n2. Creating venues...")
     seed_venues()
-    print("Done!")
+    print("\nDone!")
