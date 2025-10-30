@@ -11,7 +11,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 # -----------------------------------------------------------------------------
@@ -63,25 +63,47 @@ def service_url(request: Request) -> str:
     return f"{scheme}://{host}{SERVICE_PATH}"
 
 # -----------------------------------------------------------------------------
-# Models & dummy data
+# Models & in-memory data (DB can replace this later)
 # -----------------------------------------------------------------------------
 class Venue(BaseModel):
     id: int
     name: str
     lat: float
     lon: float
-    availability: float | None = None
+    capacity: int = 100  # simple default until DB
 
 VENUES: List[Venue] = [
-    Venue(id=1, name="Bass Library", lat=41.3083, lon=-72.9289),
-    Venue(id=2, name="Sterling Memorial Library", lat=41.3102, lon=-72.9276),
+    Venue(id=1, name="Bass Library",                lat=41.3083, lon=-72.9289, capacity=400),
+    Venue(id=2, name="Sterling Memorial Library",   lat=41.3102, lon=-72.9276, capacity=600),
 ]
 
-class CheckIn(BaseModel):
-    venue_id: int
-    occupancy: int = Field(ge=0, le=3)
-
+# Each check-in record:
+# { netid: str, venue_id: int, checkin_at: datetime, last_seen_at: datetime, checkout_at: Optional[datetime] }
 CHECKINS: List[Dict[str, object]] = []
+
+class CheckInIn(BaseModel):
+    venue_id: int
+
+class CheckInOut(BaseModel):
+    venue_id: int
+    active: bool
+
+# Helper: get active check-ins (not checked out and fresh within window)
+def _active_rows(window_minutes: int = 120) -> List[Dict[str, object]]:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=window_minutes)
+    return [
+        r for r in CHECKINS
+        if r.get("checkout_at") is None and isinstance(r.get("last_seen_at"), datetime) and r["last_seen_at"] >= cutoff
+    ]
+
+def _occupancy_counts(window_minutes: int = 120) -> Dict[int, int]:
+    counts = {v.id: 0 for v in VENUES}
+    for r in _active_rows(window_minutes):
+        vid = int(r["venue_id"])
+        counts[vid] = counts.get(vid, 0) + 1
+    return counts
+
 
 # -----------------------------------------------------------------------------
 # Auth helpers
@@ -190,34 +212,90 @@ def logout(request: Request) -> Dict[str, bool]:
 def list_venues(_: str = Depends(require_login)) -> List[Venue]:
     return VENUES
 
+@app.get("/venues/with_occupancy")
+def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)) -> List[Dict[str, object]]:
+    counts = _occupancy_counts(window)
+    out: List[Dict[str, object]] = []
+    for v in VENUES:
+        occ = counts.get(v.id, 0)
+        ratio = (occ / v.capacity) if v.capacity else 0.0
+        out.append({
+            "id": v.id,
+            "name": v.name,
+            "lat": v.lat,
+            "lon": v.lon,
+            "capacity": v.capacity,
+            "occupancy": occ,
+            "ratio": ratio,
+        })
+    return out
+
 @app.get("/venues.geojson")
 def venues_geojson(_: str = Depends(require_login)) -> JSONResponse:
-    features: List[Dict[str, object]] = [
-        {
+    counts = _occupancy_counts(120)
+    features: List[Dict[str, object]] = []
+    for v in VENUES:
+        occ = counts.get(v.id, 0)
+        ratio = (occ / v.capacity) if v.capacity else 0.0
+        features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [v.lon, v.lat]},
-            "properties": {"id": v.id, "name": v.name, "availability": v.availability},
-        }
-        for v in VENUES
-    ]
+            "properties": {
+                "id": v.id,
+                "name": v.name,
+                "capacity": v.capacity,
+                "occupancy": occ,
+                "ratio": ratio,
+            },
+        })
     return JSONResponse({"type": "FeatureCollection", "features": features})
 
 @app.get("/checkins")
 def get_checkins(window: int = 120, _: str = Depends(require_login)) -> List[Dict[str, int]]:
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=window)
-    counts: Dict[int, int] = {v.id: 0 for v in VENUES}
-    for row in CHECKINS:
-        ts = row.get("ts")
-        vid = row.get("venue_id")
-        if isinstance(ts, datetime) and ts >= cutoff and isinstance(vid, int):
-            counts[vid] = counts.get(vid, 0) + 1
+    """Legacy/simple counts per venue for debugging."""
+    counts = _occupancy_counts(window)
     return [{"venue_id": vid, "count": cnt, "window_minutes": window} for vid, cnt in counts.items()]
 
-@app.post("/checkins")
-def create_checkin(ci: CheckIn, _: str = Depends(require_login)) -> Dict[str, bool]:
-    CHECKINS.append({"venue_id": ci.venue_id, "occupancy": ci.occupancy, "ts": datetime.now(timezone.utc)})
-    return {"ok": True}
+@app.post("/checkins", response_model=CheckInOut)
+def create_checkin(ci: CheckInIn, netid: str = Depends(require_login)) -> CheckInOut:
+    """End any active check-in for this user, then check in to the given venue."""
+    now = datetime.now(timezone.utc)
+
+    # End existing active (if any)
+    for r in CHECKINS:
+        if r["netid"] == netid and r.get("checkout_at") is None:
+            r["checkout_at"] = now
+
+    # Create new active
+    CHECKINS.append({
+        "netid": netid,
+        "venue_id": ci.venue_id,
+        "checkin_at": now,
+        "last_seen_at": now,
+        "checkout_at": None,
+    })
+    return CheckInOut(venue_id=ci.venue_id, active=True)
+
+@app.post("/checkins/heartbeat", response_model=CheckInOut)
+def heartbeat(netid: str = Depends(require_login)) -> CheckInOut:
+    """Keep the current active check-in fresh."""
+    now = datetime.now(timezone.utc)
+    for r in CHECKINS:
+        if r["netid"] == netid and r.get("checkout_at") is None:
+            r["last_seen_at"] = now
+            return CheckInOut(venue_id=int(r["venue_id"]), active=True)
+    return CheckInOut(venue_id=-1, active=False)
+
+@app.post("/checkins/checkout", response_model=CheckInOut)
+def checkout(netid: str = Depends(require_login)) -> CheckInOut:
+    """Explicitly end the current active check-in (if any)."""
+    now = datetime.now(timezone.utc)
+    for r in CHECKINS:
+        if r["netid"] == netid and r.get("checkout_at") is None:
+            r["checkout_at"] = now
+            return CheckInOut(venue_id=int(r["venue_id"]), active=False)
+    return CheckInOut(venue_id=-1, active=False)
+
 
 # -----------------------------------------------------------------------------
 # Public
@@ -240,32 +318,113 @@ def web_map(_: str = Depends(require_login)) -> HTMLResponse:
   <link rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-  <style>html, body, #map { height: 100%; margin: 0; }</style>
+  <style>
+    html, body, #map { height:100%; margin:0; }
+    .control-box { background:#fff;padding:8px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2); font: 14px/1.2 system-ui,Arial; }
+    .legend span { display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:6px;border-radius:3px }
+    .legend .dot { margin-right:8px }
+    button.btn { margin-top:6px; padding:6px 10px; border-radius:6px; border:1px solid #888; background:#fff; cursor:pointer; }
+  </style>
 </head>
 <body>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script>
-    const YALE = [41.3083, -72.9279];
-    const map = L.map('map').setView(YALE, 15);
+    const map = L.map('map').setView([41.309, -72.927], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    fetch('/venues.geojson', { credentials: 'include' })
-      .then(r => { if (r.status === 401) { window.location.href = '/auth/dev/login'; return {features: []}; }
-                   return r.json(); })
-      .then(fc => {
-        (fc.features || []).forEach(f => {
-          const [lon, lat] = f.geometry.coordinates;
-          const name  = f.properties.name;
-          const avail = f.properties.availability ?? 0.5;
-          const color = avail >= 0.66 ? '#2ecc71' : (avail >= 0.33 ? '#f1c40f' : '#e74c3c');
-          L.circleMarker([lat, lon], { radius: 10, color, fillColor: color, fillOpacity: 0.7, weight: 2 })
-            .bindPopup(`<b>${name}</b><br/>Availability: ${(avail*100)|0}%`)
-            .addTo(map);
+    let heatmapOn = true;
+    const layerGroup = L.layerGroup().addTo(map);
+
+    function colorFor(ratio) {
+      // green -> yellow -> orange -> red
+      if (ratio <= 0.25) return '#2ecc71';
+      if (ratio <= 0.50) return '#bada55';
+      if (ratio <= 0.75) return '#f1c40f';
+      if (ratio <= 1.00) return '#e67e22';
+      return '#e74c3c';
+    }
+
+    async function fetchVenues() {
+      const r = await fetch('/venues/with_occupancy', { credentials: 'include' });
+      if (r.status === 401) { window.location.href = '/auth/dev/login'; return []; }
+      return await r.json();
+    }
+
+    function render(venues) {
+      layerGroup.clearLayers();
+      venues.forEach(v => {
+        const ratio = v.ratio || 0;
+        const color = heatmapOn ? colorFor(ratio) : '#3388ff';
+        const radius = heatmapOn ? Math.max(8, 30 * Math.min(1, ratio + 0.15)) : 8;
+
+        const marker = L.circleMarker([v.lat, v.lon], {
+          radius, color, fillColor: color, fillOpacity: 0.75, weight: heatmapOn ? 0 : 2
+        }).bindPopup(`
+          <b>${v.name}</b><br/>
+          ${v.occupancy}/${v.capacity} occupied (${Math.round(ratio*100)}%)<br/>
+          <button class="btn" id="btn-${v.id}">Check in here</button>
+        `);
+
+        marker.on('popupopen', () => {
+          const btn = document.getElementById(`btn-${v.id}`);
+          if (btn) btn.onclick = async () => {
+            const res = await fetch('/checkins', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              credentials: 'include',
+              body: JSON.stringify({ venue_id: v.id })
+            });
+            if (res.ok) { fetchAndRender(); }
+            else { alert('Check-in failed or login required.'); }
+          };
         });
-      })
-      .catch(err => console.error('Failed to load venues:', err));
+
+        layerGroup.addLayer(marker);
+      });
+    }
+
+    async function fetchAndRender() {
+      const venues = await fetchVenues();
+      render(venues);
+    }
+
+    // Toggle control
+    const ctrl = L.control({ position: 'topright' });
+    ctrl.onAdd = function() {
+      const div = L.DomUtil.create('div', 'control-box');
+      div.innerHTML = `
+        <label><input id="heatToggle" type="checkbox" checked /> Heatmap</label>
+        <div class="legend" style="margin-top:6px">
+          <span class="dot" style="background:#2ecc71"></span>Empty
+          <span class="dot" style="background:#f1c40f"></span>Busy
+          <span class="dot" style="background:#e74c3c"></span>Full
+        </div>
+        <button class="btn" id="checkoutBtn">Check out</button>
+      `;
+      return div;
+    };
+    ctrl.addTo(map);
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'heatToggle') {
+        heatmapOn = e.target.checked;
+        fetchAndRender();
+      }
+    });
+
+    document.addEventListener('click', async (e) => {
+      if (e.target && e.target.id === 'checkoutBtn') {
+        await fetch('/checkins/checkout', { method: 'POST', credentials: 'include' });
+        fetchAndRender();
+      }
+    });
+
+    // Polling + heartbeat
+    fetchAndRender();
+    setInterval(fetchAndRender, 15000); // refresh every 15s
+    setInterval(() => fetch('/checkins/heartbeat', { method: 'POST', credentials: 'include' }), 60000);
   </script>
 </body>
 </html>"""
