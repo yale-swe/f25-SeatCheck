@@ -1,4 +1,4 @@
-// SeatCheck – MVP UI (React Native + Expo)
+// SeatCheck – MVP UI (React Native + Expo) - Main.tsx
 // Tabs: Home (tiles), Map, Check In, Settings
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,16 +23,66 @@ import {
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { Ionicons } from "@expo/vector-icons";
-dayjs.extend(relativeTime);
+import type { NavigatorScreenParams } from "@react-navigation/native";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
+// Conditional imports - prevent web breakage
+let dayjs: any;
+let Ionicons: any;
+
+try {
+  dayjs = require("dayjs");
+  const relativeTime = require("dayjs/plugin/relativeTime");
+  dayjs.extend(relativeTime);
+} catch (e) {
+  console.warn("dayjs not available:", e);
+  dayjs = (date?: any) => ({
+    fromNow: () => "recently",
+    toISOString: () => new Date().toISOString(),
+  });
+}
+
+try {
+  const icons = require("@expo/vector-icons");
+  Ionicons = icons.Ionicons;
+} catch (e) {
+  console.warn("@expo/vector-icons not available:", e);
+  Ionicons = ({ name, size, color }: any) => (
+    <View style={{ width: size, height: size, backgroundColor: color, borderRadius: size / 2 }} />
+  );
+}
+
+// --- Navigation types ---
+type RootTabParamList = {
+  Home: undefined;
+  Map: undefined;
+  CheckIn: { id?: string } | undefined;
+  Settings: undefined;
+};
+
+type RootStackParamList = {
+  Root: NavigatorScreenParams<RootTabParamList>;
+  Details: { id: string };
+};
+
+// Map imports - ONLY for native platforms
 let MapView: any = null;
 let Heatmap: any = null;
 let Marker: any = null;
 let PROVIDER_GOOGLE: any = null;
-// Loose type so TS is happy on web:
+
+if (Platform.OS !== "web") {
+  try {
+    const maps = require("react-native-maps");
+    MapView = maps.default;
+    Marker = maps.Marker;
+    PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
+    Heatmap = maps.Heatmap;
+  } catch (e) {
+    console.log("react-native-maps not installed (optional for MVP)");
+  }
+}
+
 type Region = any;
 
 // Types
@@ -63,13 +113,13 @@ type LocationItem = {
 
 type CheckInPayload = {
   location_id: string;
-  occupancy_level: number; // 0-5
+  occupancy_level: number;
   noise_level: NoiseLevel;
   outlets_free_pct?: number;
 };
 
 // Config
-const API_BASE = "https://api.seatcheck.local/v1"; // placeholder
+const API_BASE = "https://api.seatcheck.local/v1";
 const YALE_CAMPUS = {
   latitude: 41.3102,
   longitude: -72.9267,
@@ -79,7 +129,7 @@ const YALE_CAMPUS = {
 const IMAGE_FALLBACK =
   "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&q=70&auto=format&fit=crop";
 
-// Seed demo data (replace with /v1/locations)
+// Seed data
 const SEED_LOCATIONS: LocationItem[] = [
   {
     id: "sterling",
@@ -122,7 +172,7 @@ const SEED_LOCATIONS: LocationItem[] = [
   },
 ];
 
-// Auth context (CAS hookup later)
+// Auth context
 const AuthContext = React.createContext<{
   token: string | null;
   setToken: (t: string | null) => void;
@@ -135,30 +185,20 @@ function useAuth() {
 }
 
 // API helpers
-async function apiFetch<T>(path: string, token?: string | null, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
-  return (await res.json()) as T;
-}
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchLocationsStub(): Promise<LocationItem[]> {
   await wait(300);
   return SEED_LOCATIONS;
 }
+
 async function fetchLocationDetailsStub(id: string): Promise<LocationItem> {
   await wait(250);
   const x = SEED_LOCATIONS.find((l) => l.id === id);
   if (!x) throw new Error("Not found");
   return x;
 }
+
 async function submitCheckInStub(payload: CheckInPayload): Promise<{ ok: true }> {
   await wait(250);
   const idx = SEED_LOCATIONS.findIndex((l) => l.id === payload.location_id);
@@ -175,18 +215,6 @@ async function submitCheckInStub(payload: CheckInPayload): Promise<{ ok: true }>
   return { ok: true };
 }
 
-// Realtime stub
-function useRealtime(_onMessage: (msg: any) => void, _token?: string | null) {
-  const wsRef = useRef<WebSocket | null>(null);
-  useEffect(() => {
-    // Wire when backend ws is ready
-    return () => {
-      if (wsRef.current) wsRef.current.close();
-    };
-  }, []);
-  return wsRef;
-}
-
 // UI atoms
 function Pill({ children }: { children: React.ReactNode }) {
   return (
@@ -195,6 +223,7 @@ function Pill({ children }: { children: React.ReactNode }) {
     </View>
   );
 }
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={{ marginBottom: 16 }}>
@@ -203,6 +232,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </View>
   );
 }
+
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <View style={styles.statBox}>
@@ -216,12 +246,34 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 function HomeScreen({ navigation }: any) {
   const [locations, setLocations] = useState<LocationItem[] | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!locations) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return locations;
+    return locations.filter((l) => l.name.toLowerCase().includes(q) || l.category.toLowerCase().includes(q));
+  }, [locations, query]);
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      const next = await fetchLocationsStub();
+      setLocations(next);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
     fetchLocationsStub()
       .then((d) => mounted && setLocations(d))
-      .catch((e) => Alert.alert("Load failed", String(e)));
+      .catch((e) => {
+        console.error("Load failed:", e);
+        Alert.alert("Load failed", String(e));
+      });
     return () => {
       mounted = false;
     };
@@ -229,58 +281,109 @@ function HomeScreen({ navigation }: any) {
 
   const renderItem = useCallback(
     ({ item }: { item: LocationItem }) => (
-      <View style={styles.tile}>
-        {expandedId === item.id && (
-          <View style={styles.keycard}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Stat label="Max" value={item.capacity_estimate ?? "—"} />
-              <Stat label="Noise" value={item.current?.noise ?? "—"} />
-              <Stat label="Occupancy" value={(item.current?.avg_occupancy ?? 0).toFixed(1)} />
-            </View>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              {item.amenities.map((a) => (
-                <Pill key={a}>{a}</Pill>
-              ))}
-            </View>
-            <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 8, gap: 8 }}>
-              <TouchableOpacity onPress={() => navigation.navigate("Details", { id: item.id })} style={styles.linkBtn}>
-                <Text style={styles.linkBtnText}>More details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigation.navigate("CheckIn", { id: item.id })} style={styles.linkBtn}>
-                <Text style={styles.linkBtnText}>Check in</Text>
-              </TouchableOpacity>
-            </View>
+      <TouchableOpacity
+        style={styles.cardStacked}
+        onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}
+        activeOpacity={0.95}
+      >
+        <View style={styles.cardContent}>
+          {/* Left: Image */}
+          <View style={styles.cardImageContainer}>
+            <Image source={{ uri: item.imageUrl || IMAGE_FALLBACK }} style={styles.cardImage} resizeMode="cover" />
           </View>
-        )}
 
-        <Image source={{ uri: item.imageUrl || IMAGE_FALLBACK }} style={styles.tileImage} resizeMode="cover" />
-        <Pressable onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}>
-          <Text style={styles.tileTitle}>{item.name}</Text>
-        </Pressable>
-      </View>
+          {/* Right: Info */}
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardTitle}>{item.name}</Text>
+            <View style={styles.cardStats}>
+              <View style={styles.cardStatItem}>
+                <Text style={styles.cardStatLabel}>Occupancy</Text>
+                <Text style={styles.cardStatValue}>{(item.current?.avg_occupancy ?? 0).toFixed(1)}/5</Text>
+              </View>
+              <View style={styles.cardStatDivider} />
+              <View style={styles.cardStatItem}>
+                <Text style={styles.cardStatLabel}>Noise</Text>
+                <Text style={styles.cardStatValue}>{item.current?.noise ?? "—"}</Text>
+              </View>
+            </View>
+
+            {expandedId === item.id && (
+              <View style={styles.cardExpanded}>
+                <View style={styles.cardAmenities}>
+                  {item.amenities.slice(0, 3).map((a) => (
+                    <View key={a} style={styles.amenityChip}>
+                      <Text style={styles.amenityChipText}>{a}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.cardButtons}>
+                  <TouchableOpacity onPress={() => navigation.navigate("Details", { id: item.id })} style={styles.cardBtn}>
+                    <Text style={styles.cardBtnText}>Details</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate("CheckIn", { id: item.id })}
+                    style={[styles.cardBtn, styles.cardBtnPrimary]}
+                  >
+                    <Text style={[styles.cardBtnText, styles.cardBtnTextPrimary]}>Check In</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
     ),
-    [expandedId]
+    [expandedId, navigation]
   );
 
   if (!locations) {
     return (
-      <SafeAreaView style={styles.screen}>
-        <ActivityIndicator style={{ marginTop: 24 }} />
+      <SafeAreaView style={styles.screenWithHeader}>
+        <View style={styles.header}>
+          <Text style={{ fontSize: 28, fontWeight: "900", color: "#1e40af" }}>SeatCheck</Text>
+        </View>
+        <View style={{ padding: 16, gap: 16 }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={styles.skeletonCardStacked} />
+          ))}
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <TextInput placeholder="Search study spots…" style={styles.search} accessibilityLabel="Search" />
-      <FlatList
-        data={locations}
-        keyExtractor={(it) => it.id}
-        numColumns={2}
-        contentContainerStyle={{ padding: 12, gap: 12 }}
-        columnWrapperStyle={{ gap: 12 }}
-        renderItem={renderItem}
+    <SafeAreaView style={styles.screenWithHeader}>
+      {/* Header with Logo */}
+      <View style={styles.header}>
+        <Text style={{ fontSize: 28, fontWeight: "900", color: "#1e40af" }}>SeatCheck</Text>
+      </View>
+
+      {/* Search */}
+      <TextInput
+        placeholder="Search study spots…"
+        placeholderTextColor="#94a3b8"
+        style={styles.searchNew}
+        value={query}
+        onChangeText={setQuery}
       />
+
+      {/* Locations List */}
+      {filtered.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyTitle}>No matching spots</Text>
+          <Text style={styles.helperText}>Try another name or category</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(it) => it.id}
+          contentContainerStyle={{ padding: 16, gap: 16 }}
+          renderItem={renderItem}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -291,7 +394,9 @@ function MapScreen({ navigation }: any) {
 
   useEffect(() => {
     let mounted = true;
-    fetchLocationsStub().then((d) => mounted && setLocations(d));
+    fetchLocationsStub()
+      .then((d) => mounted && setLocations(d))
+      .catch((e) => console.error("Failed to load locations:", e));
     return () => {
       mounted = false;
     };
@@ -308,13 +413,16 @@ function MapScreen({ navigation }: any) {
   );
 
   // Web fallback
-  if (Platform.OS === "web") {
+  if (Platform.OS === "web" || !MapView) {
     return (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
-        <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8 }}>Map preview not available on web</Text>
+        <Text style={{ fontSize: 18, fontWeight: "800", marginBottom: 8 }}>
+          {Platform.OS === "web" ? "Map preview not available on web" : "Map not loaded"}
+        </Text>
         <Text style={{ color: "#374151", marginBottom: 12 }}>
-          Use the iOS Simulator (press <Text style={{ fontWeight: "800" }}>i</Text> in the Expo terminal) or Expo Go on your phone to
-          see the interactive map.
+          {Platform.OS === "web"
+            ? "Use the iOS Simulator or Expo Go on your phone to see the interactive map."
+            : "Install react-native-maps: npx expo install react-native-maps"}
         </Text>
         <Section title="Nearby places">
           {(locations || []).map((l) => (
@@ -342,42 +450,34 @@ function MapScreen({ navigation }: any) {
   // Native map
   return (
     <View style={{ flex: 1 }}>
-      {MapView ? (
-        <MapView
-          style={{ flex: 1 }}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={region}
-          onRegionChangeComplete={setRegion}
-        >
-          {heatPoints.length > 0 && Heatmap && <Heatmap points={heatPoints as any} radius={40} opacity={0.6} />}
-          {(locations || []).map((l) => (
-            <Marker
-              key={l.id}
-              coordinate={{ latitude: l.lat, longitude: l.lng }}
-              title={l.name}
-              description={`Occ ${l.current?.avg_occupancy ?? 0}/5, ${l.current?.noise ?? "n/a"}`}
-              onPress={() => navigation.navigate("Details", { id: l.id })}
-            />
-          ))}
-        </MapView>
-      ) : (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <Text>Map module not loaded.</Text>
-        </View>
-      )}
+      <MapView style={{ flex: 1 }} provider={PROVIDER_GOOGLE} initialRegion={region} onRegionChangeComplete={setRegion}>
+        {heatPoints.length > 0 && Heatmap && <Heatmap points={heatPoints as any} radius={40} opacity={0.6} />}
+        {(locations || []).map((l) => (
+          <Marker
+            key={l.id}
+            coordinate={{ latitude: l.lat, longitude: l.lng }}
+            title={l.name}
+            description={`Occ ${l.current?.avg_occupancy ?? 0}/5, ${l.current?.noise ?? "n/a"}`}
+            onPress={() => navigation.navigate("Details", { id: l.id })}
+          />
+        ))}
+      </MapView>
     </View>
   );
 }
 
-function DetailsScreen({ route, navigation }: any) {
-  const { id } = route.params as { id: string };
+function DetailsScreen({ route, navigation }: NativeStackScreenProps<RootStackParamList, "Details">) {
+  const { id } = route.params;
   const [item, setItem] = useState<LocationItem | null>(null);
 
   useEffect(() => {
     let mounted = true;
     fetchLocationDetailsStub(id)
       .then((d) => mounted && setItem(d))
-      .catch((e) => Alert.alert("Failed to load", String(e)));
+      .catch((e) => {
+        console.error("Failed to load details:", e);
+        Alert.alert("Failed to load", String(e));
+      });
     return () => {
       mounted = false;
     };
@@ -425,14 +525,12 @@ function DetailsScreen({ route, navigation }: any) {
       </Section>
 
       <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate("CheckIn", { id: item.id })}>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate("Root", { screen: "CheckIn", params: { id: item.id } })}>
           <Text style={styles.primaryBtnText}>Check in</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.secondaryBtn}
-          onPress={() =>
-            Linking.openURL("https://registrar.yale.edu/yale-university-classrooms/classroom-list")
-          }
+          onPress={() => Linking.openURL("https://registrar.yale.edu/yale-university-classrooms/classroom-list")}
         >
           <Text style={styles.secondaryBtnText}>Room info</Text>
         </TouchableOpacity>
@@ -460,6 +558,7 @@ function CheckInScreen({ route, navigation }: any) {
       Alert.alert("Thanks!", "Your check-in was submitted.");
       navigation.navigate("Details", { id: selectedId });
     } catch (e: any) {
+      console.error("Submit failed:", e);
       Alert.alert("Submit failed", String(e?.message || e));
     } finally {
       setBusy(false);
@@ -555,9 +654,9 @@ function SettingsScreen() {
   );
 }
 
-// ---------- Navigation ----------
-const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+// Navigation
+const Tab = createBottomTabNavigator<RootTabParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function Tabs() {
   return (
@@ -567,14 +666,14 @@ function Tabs() {
         tabBarActiveTintColor: "#2563eb",
         tabBarLabelStyle: { fontSize: 12 },
         tabBarIcon: ({ color, size }) => {
-          const map: Record<string, keyof typeof Ionicons.glyphMap> = {
+          const iconMap: Record<string, string> = {
             Home: "home-outline",
             Map: "map-outline",
             CheckIn: "checkmark-done-outline",
             Settings: "settings-outline",
           };
-          const icon = map[route.name] || "ellipse-outline";
-          return <Ionicons name={icon} size={size} color={color} />;
+          const iconName = iconMap[route.name] || "ellipse-outline";
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >
@@ -586,7 +685,7 @@ function Tabs() {
   );
 }
 
-export default function App() {
+export default function Main() {
   const [token, setToken] = useState<string | null>(null);
   const scheme = Appearance.getColorScheme();
 
@@ -605,7 +704,159 @@ export default function App() {
 
 // Styles
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  screen: { flex: 1, backgroundColor: "#f8fafc" },
+  screenWithHeader: { flex: 1, backgroundColor: "#f8fafc" },
+
+  // Header with logo
+  header: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    alignItems: "center",
+  },
+  logo: {
+    width: 160,
+    height: 50,
+  },
+
+  // New search style
+  searchNew: {
+    marginHorizontal: 16,
+    marginVertical: 12,
+    borderWidth: 1.5,
+    borderColor: "#cbd5e1",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    backgroundColor: "#fff",
+    fontWeight: "500",
+    color: "#1e293b",
+  },
+
+  // Stacked card layout
+  cardStacked: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    overflow: "hidden",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  cardContent: {
+    flexDirection: "row",
+    minHeight: 120,
+  },
+  cardImageContainer: {
+    width: 120,
+    backgroundColor: "#e2e8f0",
+  },
+  cardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  cardInfo: {
+    flex: 1,
+    padding: 16,
+    justifyContent: "center",
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  cardStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  cardStatItem: {
+    flex: 1,
+  },
+  cardStatLabel: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: "600",
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  cardStatValue: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#3b82f6",
+  },
+  cardStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#e2e8f0",
+  },
+
+  // Expanded card section
+  cardExpanded: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  cardAmenities: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  amenityChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "#dbeafe",
+    borderRadius: 8,
+  },
+  amenityChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1e40af",
+  },
+  cardButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  cardBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cardBtnPrimary: {
+    backgroundColor: "#3b82f6",
+  },
+  cardBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  cardBtnTextPrimary: {
+    color: "#fff",
+  },
+
+  // Skeleton for stacked cards
+  skeletonCardStacked: {
+    height: 120,
+    borderRadius: 20,
+    backgroundColor: "#e2e8f0",
+    opacity: 0.5,
+  },
+
+  // Old styles (keep for other screens)
   search: {
     margin: 12,
     borderWidth: StyleSheet.hairlineWidth,
@@ -642,7 +893,23 @@ const styles = StyleSheet.create({
   linkBtnText: { fontWeight: "600" },
   tileImage: { width: "100%", height: 140 },
   tileTitle: { fontSize: 16, fontWeight: "700", padding: 12 },
-
+  tileOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    justifyContent: "space-between",
+    padding: 8,
+  },
+  badgeRow: { flexDirection: "row", gap: 8, alignSelf: "flex-end" },
+  badge: {
+    backgroundColor: "rgba(17,24,39,0.72)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  badgeText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   sectionTitle: { fontSize: 18, fontWeight: "800", marginBottom: 6 },
   statBox: {
     alignItems: "center",
@@ -657,16 +924,14 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 18, fontWeight: "800" },
   statLabel: { fontSize: 12, color: "#6b7280" },
-  pill: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#eef2ff", borderRadius: 999 },
-  pillText: { fontSize: 12, fontWeight: "700", color: "#3730a3" },
-
+  pill: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#dbeafe", borderRadius: 999 },
+  pillText: { fontSize: 12, fontWeight: "700", color: "#1e40af" },
   detailImage: { width: "100%", height: 220, borderRadius: 16, marginBottom: 12 },
   detailTitle: { fontSize: 24, fontWeight: "900", marginBottom: 8 },
-  primaryBtn: { backgroundColor: "#2563eb", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12 },
+  primaryBtn: { backgroundColor: "#3b82f6", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, flex: 1 },
   primaryBtnText: { color: "#fff", fontWeight: "800", textAlign: "center" },
-  secondaryBtn: { backgroundColor: "#e5e7eb", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12 },
-  secondaryBtnText: { color: "#111827", fontWeight: "800" },
-
+  secondaryBtn: { backgroundColor: "#e5e7eb", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, flex: 1 },
+  secondaryBtnText: { color: "#111827", fontWeight: "800", textAlign: "center" },
   selectBox: {
     padding: 12,
     backgroundColor: "#fff",
@@ -678,8 +943,7 @@ const styles = StyleSheet.create({
   choiceChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: "#f3f4f6" },
   choiceChipActive: { backgroundColor: "#dbeafe" },
   choiceChipText: { fontWeight: "700", color: "#374151" },
-  choiceChipTextActive: { color: "#1e3a8a" },
-
+  choiceChipTextActive: { color: "#1e40af" },
   sliderRow: { flexDirection: "row", gap: 8 },
   sliderDot: {
     flex: 1,
@@ -690,16 +954,31 @@ const styles = StyleSheet.create({
   },
   sliderDotActive: { backgroundColor: "#dbeafe" },
   sliderDotText: { fontWeight: "800", color: "#374151" },
-  sliderDotTextActive: { color: "#1e3a8a" },
-
+  sliderDotTextActive: { color: "#1e40af" },
   helperText: { fontSize: 12, color: "#6b7280" },
-
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
   toggleLabel: { fontSize: 16, fontWeight: "700" },
   toggle: { width: 54, height: 32, borderRadius: 999, backgroundColor: "#e5e7eb", padding: 4 },
   toggleOn: { backgroundColor: "#93c5fd" },
   knob: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff" },
   knobOn: { marginLeft: 22 },
-
   bodyText: { fontSize: 14, color: "#111827" },
+  emptyBox: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#e5e7eb",
+    alignItems: "flex-start",
+    gap: 4,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
+  skeletonCard: {
+    height: 140,
+    borderRadius: 16,
+    backgroundColor: "#e5e7eb",
+    opacity: 0.6,
+  },
 });
