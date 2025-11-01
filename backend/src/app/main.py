@@ -4,8 +4,12 @@ from __future__ import annotations
 import os
 import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List
+
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from .db import SessionLocal
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -13,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
+
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv(filename=".env"))
 
 # -----------------------------------------------------------------------------
 # App setup
@@ -23,16 +30,15 @@ app = FastAPI(title="SeatCheck API", version="0.1.0")
 APP_BASE = os.getenv("APP_BASE", "http://localhost:8081")
 
 # ---- CORS -------------------------------------------------------------------
-DEV_ORIGINS = [
+default_origins = [
     "http://localhost:8081",
     "http://127.0.0.1:8081",
     "http://localhost:19006",
     "http://127.0.0.1:19006",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
 ]
+extra_origins = os.getenv("DEV_ORIGINS", "").split(",") if os.getenv("DEV_ORIGINS") else []
+DEV_ORIGINS = list(set(default_origins + extra_origins))
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=DEV_ORIGINS,
@@ -63,24 +69,18 @@ def service_url(request: Request) -> str:
     return f"{scheme}://{host}{SERVICE_PATH}"
 
 # -----------------------------------------------------------------------------
-# Models & in-memory data (DB can replace this later)
+# DB dependency (keep)
 # -----------------------------------------------------------------------------
-class Venue(BaseModel):
-    id: int
-    name: str
-    lat: float
-    lon: float
-    capacity: int = 100  # simple default until DB
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-VENUES: List[Venue] = [
-    Venue(id=1, name="Bass Library",                lat=41.3083, lon=-72.9289, capacity=400),
-    Venue(id=2, name="Sterling Memorial Library",   lat=41.3102, lon=-72.9276, capacity=600),
-]
-
-# Each check-in record:
-# { netid: str, venue_id: int, checkin_at: datetime, last_seen_at: datetime, checkout_at: Optional[datetime] }
-CHECKINS: List[Dict[str, object]] = []
-
+# -----------------------------------------------------------------------------
+# I/O models (keep minimal Pydantic models for request/response)
+# -----------------------------------------------------------------------------
 class CheckInIn(BaseModel):
     venue_id: int
 
@@ -88,22 +88,32 @@ class CheckInOut(BaseModel):
     venue_id: int
     active: bool
 
-# Helper: get active check-ins (not checked out and fresh within window)
-def _active_rows(window_minutes: int = 120) -> List[Dict[str, object]]:
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=window_minutes)
-    return [
-        r for r in CHECKINS
-        if r.get("checkout_at") is None and isinstance(r.get("last_seen_at"), datetime) and r["last_seen_at"] >= cutoff
-    ]
+# -----------------------------------------------------------------------------
+# SQL helpers (NEW) — replaces in-memory helpers
+# -----------------------------------------------------------------------------
+VENUES_SQL = text("""
+SELECT id, name, capacity,
+       ST_X(ST_Transform(geom::geometry, 4326)) AS lon,
+       ST_Y(ST_Transform(geom::geometry, 4326)) AS lat
+FROM venues
+ORDER BY name
+""")
 
-def _occupancy_counts(window_minutes: int = 120) -> Dict[int, int]:
-    counts = {v.id: 0 for v in VENUES}
-    for r in _active_rows(window_minutes):
-        vid = int(r["venue_id"])
-        counts[vid] = counts.get(vid, 0) + 1
-    return counts
-
+OCC_SQL = text("""
+SELECT v.id, v.name, v.capacity,
+       ST_X(ST_Transform(v.geom::geometry, 4326)) AS lon,
+       ST_Y(ST_Transform(v.geom::geometry, 4326)) AS lat,
+       COALESCE(o.occupancy, 0) AS occupancy
+FROM venues v
+LEFT JOIN (
+  SELECT venue_id, COUNT(*) AS occupancy
+  FROM checkins
+  WHERE checkout_at IS NULL
+    AND now() - last_seen_at <= interval '2 hours'
+  GROUP BY venue_id
+) o ON o.venue_id = v.id
+ORDER BY v.name
+""")
 
 # -----------------------------------------------------------------------------
 # Auth helpers
@@ -206,96 +216,100 @@ def logout(request: Request) -> Dict[str, bool]:
     return {"ok": True}
 
 # -----------------------------------------------------------------------------
-# Protected app API
+# Protected app API (DB-backed now)
 # -----------------------------------------------------------------------------
-@app.get("/venues", response_model=List[Venue])
-def list_venues(_: str = Depends(require_login)) -> List[Venue]:
-    return VENUES
+@app.get("/venues")
+def list_venues(_: str = Depends(require_login), db: Session = Depends(get_db)):
+    rows = db.execute(VENUES_SQL).mappings().all()
+    return [
+        {"id": r["id"], "name": r["name"], "capacity": r["capacity"], "lat": r["lat"], "lon": r["lon"]}
+        for r in rows
+    ]
 
 @app.get("/venues/with_occupancy")
-def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)) -> List[Dict[str, object]]:
-    counts = _occupancy_counts(window)
-    out: List[Dict[str, object]] = []
-    for v in VENUES:
-        occ = counts.get(v.id, 0)
-        ratio = (occ / v.capacity) if v.capacity else 0.0
-        out.append({
-            "id": v.id,
-            "name": v.name,
-            "lat": v.lat,
-            "lon": v.lon,
-            "capacity": v.capacity,
-            "occupancy": occ,
-            "ratio": ratio,
-        })
-    return out
+def venues_with_occupancy(_: str = Depends(require_login), db: Session = Depends(get_db)):
+    rows = db.execute(OCC_SQL).mappings().all()
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "lat": r["lat"],
+            "lon": r["lon"],
+            "capacity": r["capacity"],
+            "occupancy": r["occupancy"],
+            "ratio": (r["occupancy"] / r["capacity"]) if r["capacity"] else 0.0,
+        }
+        for r in rows
+    ]
 
 @app.get("/venues.geojson")
-def venues_geojson(_: str = Depends(require_login)) -> JSONResponse:
-    counts = _occupancy_counts(120)
+def venues_geojson(_: str = Depends(require_login), db: Session = Depends(get_db)) -> JSONResponse:
+    rows = db.execute(OCC_SQL).mappings().all()
     features: List[Dict[str, object]] = []
-    for v in VENUES:
-        occ = counts.get(v.id, 0)
-        ratio = (occ / v.capacity) if v.capacity else 0.0
+    for r in rows:
+        ratio = (r["occupancy"] / r["capacity"]) if r["capacity"] else 0.0
         features.append({
             "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [v.lon, v.lat]},
+            "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
             "properties": {
-                "id": v.id,
-                "name": v.name,
-                "capacity": v.capacity,
-                "occupancy": occ,
+                "id": r["id"],
+                "name": r["name"],
+                "capacity": r["capacity"],
+                "occupancy": r["occupancy"],
                 "ratio": ratio,
             },
         })
     return JSONResponse({"type": "FeatureCollection", "features": features})
 
 @app.get("/checkins")
-def get_checkins(window: int = 120, _: str = Depends(require_login)) -> List[Dict[str, int]]:
-    """Legacy/simple counts per venue for debugging."""
-    counts = _occupancy_counts(window)
-    return [{"venue_id": vid, "count": cnt, "window_minutes": window} for vid, cnt in counts.items()]
+def get_checkins(window: int = 120, _: str = Depends(require_login), db: Session = Depends(get_db)):
+    rows = db.execute(text(f"""
+        SELECT v.id AS venue_id,
+               COALESCE(o.count, 0) AS count
+        FROM venues v
+        LEFT JOIN (
+          SELECT venue_id, COUNT(*) AS count
+          FROM checkins
+          WHERE checkout_at IS NULL
+            AND now() - last_seen_at <= interval '{window} minutes'
+          GROUP BY venue_id
+        ) o ON o.venue_id = v.id
+        ORDER BY v.id
+    """)).mappings().all()
+    return [{"venue_id": r["venue_id"], "count": r["count"], "window_minutes": window} for r in rows]
 
 @app.post("/checkins", response_model=CheckInOut)
-def create_checkin(ci: CheckInIn, netid: str = Depends(require_login)) -> CheckInOut:
-    """End any active check-in for this user, then check in to the given venue."""
-    now = datetime.now(timezone.utc)
-
-    # End existing active (if any)
-    for r in CHECKINS:
-        if r["netid"] == netid and r.get("checkout_at") is None:
-            r["checkout_at"] = now
-
-    # Create new active
-    CHECKINS.append({
-        "netid": netid,
-        "venue_id": ci.venue_id,
-        "checkin_at": now,
-        "last_seen_at": now,
-        "checkout_at": None,
-    })
+def create_checkin(ci: CheckInIn, netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
+    # end any existing active check-in for this user, then create new
+    db.execute(text("""
+        UPDATE checkins SET checkout_at = now()
+        WHERE netid = :netid AND checkout_at IS NULL
+    """), {"netid": netid})
+    db.execute(text("""
+        INSERT INTO checkins (netid, venue_id) VALUES (:netid, :venue_id)
+    """), {"netid": netid, "venue_id": ci.venue_id})
+    db.commit()
     return CheckInOut(venue_id=ci.venue_id, active=True)
 
 @app.post("/checkins/heartbeat", response_model=CheckInOut)
-def heartbeat(netid: str = Depends(require_login)) -> CheckInOut:
-    """Keep the current active check-in fresh."""
-    now = datetime.now(timezone.utc)
-    for r in CHECKINS:
-        if r["netid"] == netid and r.get("checkout_at") is None:
-            r["last_seen_at"] = now
-            return CheckInOut(venue_id=int(r["venue_id"]), active=True)
-    return CheckInOut(venue_id=-1, active=False)
+def heartbeat(netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
+    row = db.execute(text("""
+        UPDATE checkins SET last_seen_at = now()
+        WHERE netid = :netid AND checkout_at IS NULL
+        RETURNING venue_id
+    """), {"netid": netid}).fetchone()
+    db.commit()
+    return CheckInOut(venue_id=(row.venue_id if row else -1), active=bool(row))
 
 @app.post("/checkins/checkout", response_model=CheckInOut)
-def checkout(netid: str = Depends(require_login)) -> CheckInOut:
-    """Explicitly end the current active check-in (if any)."""
-    now = datetime.now(timezone.utc)
-    for r in CHECKINS:
-        if r["netid"] == netid and r.get("checkout_at") is None:
-            r["checkout_at"] = now
-            return CheckInOut(venue_id=int(r["venue_id"]), active=False)
-    return CheckInOut(venue_id=-1, active=False)
-
+def checkout(netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
+    row = db.execute(text("""
+        UPDATE checkins SET checkout_at = now()
+        WHERE netid = :netid AND checkout_at IS NULL
+        RETURNING venue_id
+    """), {"netid": netid}).fetchone()
+    db.commit()
+    return CheckInOut(venue_id=(row.venue_id if row else -1), active=False)
 
 # -----------------------------------------------------------------------------
 # Public
