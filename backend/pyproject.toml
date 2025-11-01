@@ -12,6 +12,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "alembic>=1.14.0",
     "pydantic-settings>=2.7.1",
+    "geoalchemy2>=0.15.2",
 ]
 
 [build-system]

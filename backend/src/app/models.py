@@ -3,7 +3,9 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, JSON, func
+from geoalchemy2 import Geography
+from geoalchemy2.elements import WKTElement
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, JSON, func, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -92,6 +94,14 @@ class Venue(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     lat: Mapped[float] = mapped_column(Float, nullable=False)
     lon: Mapped[float] = mapped_column(Float, nullable=False)
+    
+    # PostGIS geometry field for spatial queries
+    # GEOGRAPHY type uses real-world coordinates (lat/lon) and meters for distance
+    # SRID 4326 is WGS84 (standard GPS coordinate system)
+    location: Mapped[Optional[Geography]] = mapped_column(
+        Geography(geometry_type="POINT", srid=4326),
+        nullable=True,  # Make optional during migration
+    )
 
     # Optional fields
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
@@ -120,16 +130,31 @@ class Venue(Base):
         "CheckIn", back_populates="venue", cascade="all, delete-orphan"
     )
 
-    # Composite index for location queries
+    # Table configuration
     __table_args__ = (
-        # Index for geospatial queries (find nearby venues)
-        # Usage: WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
-        {"mysql_engine": "InnoDB", "extend_existing": True},
+        # Spatial index for PostGIS queries (automatically created by GeoAlchemy2)
+        # This enables fast distance-based queries like ST_DWithin
+        {"extend_existing": True},
     )
 
     def __repr__(self) -> str:
         """String representation of Venue."""
         return f"<Venue(id={self.id}, name='{self.name}')>"
+
+
+# Automatic location synchronization for Venue model
+@event.listens_for(Venue, "before_insert")
+@event.listens_for(Venue, "before_update")
+def sync_venue_location(mapper, connection, target):
+    """Automatically sync PostGIS location field from lat/lon.
+    
+    This event listener ensures the location geometry field is always
+    up-to-date when a venue is created or updated.
+    """
+    if target.lat is not None and target.lon is not None:
+        # Create WKT (Well-Known Text) POINT geometry from lat/lon
+        # Format: POINT(longitude latitude)
+        target.location = WKTElement(f"POINT({target.lon} {target.lat})", srid=4326)
 
 
 class CheckIn(Base):

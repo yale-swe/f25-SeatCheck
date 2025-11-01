@@ -14,8 +14,8 @@ VENUES = [
     {
         "name": "Bass Library",
         "category": "library",
-        "lat": 41.3083,
-        "lon": -72.9289,
+        "lat": 41.31080360340808,
+        "lon": -72.92727074102177,
         "description": "Main undergraduate library with flexible study spaces",
         "capacity": 500,
         "amenities": ["WiFi", "Power outlets", "Printing", "Group study rooms"],
@@ -34,8 +34,8 @@ VENUES = [
     {
         "name": "Sterling Memorial Library",
         "category": "library",
-        "lat": 41.3102,
-        "lon": -72.9276,
+        "lat": 41.311019427906686,
+        "lon": -72.92835078511551,
         "description": "Gothic cathedral-style library, quiet study atmosphere",
         "capacity": 800,
         "amenities": [
@@ -59,8 +59,8 @@ VENUES = [
     {
         "name": "Marx Science and Social Science Library",
         "category": "library",
-        "lat": 41.3107,
-        "lon": -72.9265,
+        "lat": 41.31766242012532,
+        "lon": -72.9219592769791,
         "description": "Science library with collaborative workspaces",
         "capacity": 300,
         "amenities": ["WiFi", "Power outlets", "Group study spaces", "Whiteboards"],
@@ -79,8 +79,8 @@ VENUES = [
     {
         "name": "Divinity School Library",
         "category": "library",
-        "lat": 41.3134,
-        "lon": -72.9282,
+        "lat": 41.32354653658994,
+        "lon": -72.92076670001204,
         "description": "Quiet reading room with historical collections",
         "capacity": 120,
         "amenities": ["WiFi", "Power outlets", "Silent study", "Reading rooms"],
