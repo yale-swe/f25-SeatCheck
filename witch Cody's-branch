@@ -1,0 +1,11 @@
+* [32mCody's-Branch                                   [m ca74960 [[34morigin/Cody's-Branch[m] Added Separate Map Views (INSPIRED BY KASHVI)
+  main                                            [m d5d7cc5 [[34morigin/main[m] Merge pull request #8 from yale-swe/feature/backend/api
+  [31mremotes/origin/Cody's-Branch                    [m ca74960 Added Separate Map Views (INSPIRED BY KASHVI)
+  [31mremotes/origin/HEAD                             [m -> origin/main
+  [31mremotes/origin/feat/backend-cas-auth            [m 60ba1ca FIX : Return type annotation V2
+  [31mremotes/origin/feature/backend/heatmap          [m bc91050 BACKEND
+  [31mremotes/origin/feature/checkin-backend-david    [m 1fd557d feat: Add check-in endpoints with database integration
+  [31mremotes/origin/feature/frontend-fixes-kashvi    [m 521daa1 Fix: search feature, UI layout, hyperlink navigation, general frontend polish
+  [31mremotes/origin/feature/frontend-updates         [m cdad29e Fix: make Main.tsx web-safe and add UI updates
+  [31mremotes/origin/feature/postgis-location-tracking[m 9e9ba60 Add PostGIS location tracking with spatial queries
+  [31mremotes/origin/main                             [m d5d7cc5 Merge pull request #8 from yale-swe/feature/backend/api

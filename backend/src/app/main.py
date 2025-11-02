@@ -7,16 +7,27 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from .db import SessionLocal
-
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from src.app.schemas import (
+    RatingCreate, RatingResponse, VenueWithMetrics, VenueStatsResponse,
+    CheckInIn, CheckInOut,
+)
+from src.app.crud.presence import (
+    end_active_for_user, create_presence_checkin, heartbeat_active, occupancy_counts,
+)
+from src.app.crud.ratings import (
+    create_rating, get_venue_rating_stats, get_all_rating_stats,
+)
+from src.app.db import SessionLocal
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(filename=".env"))
@@ -69,7 +80,16 @@ def service_url(request: Request) -> str:
     return f"{scheme}://{host}{SERVICE_PATH}"
 
 # -----------------------------------------------------------------------------
-# DB dependency (keep)
+# Auth helper (define BEFORE routes that reference it)
+# -----------------------------------------------------------------------------
+def require_login(request: Request) -> str:
+    netid = request.session.get("netid")
+    if not netid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return str(netid)
+
+# -----------------------------------------------------------------------------
+# DB dependency
 # -----------------------------------------------------------------------------
 def get_db():
     db = SessionLocal()
@@ -79,30 +99,20 @@ def get_db():
         db.close()
 
 # -----------------------------------------------------------------------------
-# I/O models (keep minimal Pydantic models for request/response)
-# -----------------------------------------------------------------------------
-class CheckInIn(BaseModel):
-    venue_id: int
-
-class CheckInOut(BaseModel):
-    venue_id: int
-    active: bool
-
-# -----------------------------------------------------------------------------
-# SQL helpers (NEW) — replaces in-memory helpers
+# SQL helpers
 # -----------------------------------------------------------------------------
 VENUES_SQL = text("""
 SELECT id, name, capacity,
-       ST_X(ST_Transform(geom::geometry, 4326)) AS lon,
-       ST_Y(ST_Transform(geom::geometry, 4326)) AS lat
+       ST_Y(geom::geometry) AS lat,
+       ST_X(geom::geometry) AS lon
 FROM venues
 ORDER BY name
 """)
 
 OCC_SQL = text("""
 SELECT v.id, v.name, v.capacity,
-       ST_X(ST_Transform(v.geom::geometry, 4326)) AS lon,
-       ST_Y(ST_Transform(v.geom::geometry, 4326)) AS lat,
+       ST_Y(v.geom::geometry) AS lat,
+       ST_X(v.geom::geometry) AS lon,
        COALESCE(o.occupancy, 0) AS occupancy
 FROM venues v
 LEFT JOIN (
@@ -114,15 +124,6 @@ LEFT JOIN (
 ) o ON o.venue_id = v.id
 ORDER BY v.name
 """)
-
-# -----------------------------------------------------------------------------
-# Auth helpers
-# -----------------------------------------------------------------------------
-def require_login(request: Request) -> str:
-    netid = request.session.get("netid")
-    if not netid:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return str(netid)
 
 # -----------------------------------------------------------------------------
 # Root redirect
@@ -150,8 +151,6 @@ async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(validate_url)
 
-    print("[CAS RAW]", resp.text[:400])
-
     if resp.status_code != 200:
         return RedirectResponse(url=f"{APP_BASE}/login?error=cas_http", status_code=302)
 
@@ -162,8 +161,6 @@ async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
         netid = (user_el.text or "").strip() if user_el is not None else ""
     except ET.ParseError:
         netid = ""
-
-    print("[CAS CALLBACK]", "netid=", netid)
 
     if not netid:
         return RedirectResponse(url=f"{APP_BASE}/login?error=cas_failed", status_code=302)
@@ -178,11 +175,9 @@ DEV_AUTH = os.getenv("DEV_AUTH", "1") == "1"
 
 @app.get("/auth/dev/login")
 def dev_login(request: Request, netid: str = "dev001"):
-    """Temporary dev-only login to simulate CAS for testing."""
     if not DEV_AUTH:
         raise HTTPException(status_code=404, detail="Disabled")
     request.session["netid"] = netid
-    print(f"[DEV LOGIN] netid={netid}")
     return RedirectResponse(url=f"{APP_BASE}/", status_code=status.HTTP_302_FOUND)
 
 @app.post("/auth/dev/logout")
@@ -190,19 +185,15 @@ def dev_logout(request: Request):
     if not DEV_AUTH:
         raise HTTPException(status_code=404, detail="Disabled")
     request.session.clear()
-    print("[DEV LOGOUT]")
     return {"ok": True}
 
 # -----------------------------------------------------------------------------
-# Debug helper
+# Debug / Auth endpoints
 # -----------------------------------------------------------------------------
 @app.get("/debug/whoami")
 def whoami(request: Request):
     return {"netid": request.session.get("netid")}
 
-# -----------------------------------------------------------------------------
-# Auth endpoints
-# -----------------------------------------------------------------------------
 @app.get("/auth/me")
 def me(request: Request) -> Dict[str, str]:
     netid = request.session.get("netid")
@@ -216,7 +207,51 @@ def logout(request: Request) -> Dict[str, bool]:
     return {"ok": True}
 
 # -----------------------------------------------------------------------------
-# Protected app API (DB-backed now)
+# Ratings API (anonymous crowd/noise) - David-style
+# -----------------------------------------------------------------------------
+@app.post("/api/v1/checkins", response_model=RatingResponse, status_code=status.HTTP_201_CREATED)
+def create_rating_checkin(payload: RatingCreate, netid: str = Depends(require_login)):
+    db: Session = SessionLocal()
+    try:
+        row = create_rating(
+            db,
+            venue_id=payload.venue_id,
+            # you can decide to store netid or not in ratings; schema is anonymous
+            occupancy=payload.occupancy,
+            noise=payload.noise,
+            anonymous=payload.anonymous,
+        )
+        return RatingResponse(
+            id=int(row.id),
+            venue_id=int(row.venue_id),
+            occupancy=int(row.occupancy),
+            noise=int(row.noise),
+            anonymous=bool(row.anonymous),
+            created_at=row.created_at,
+        )
+    finally:
+        db.close()
+
+@app.get("/api/v1/venues/{venue_id}/stats", response_model=VenueStatsResponse)
+def venue_stats_combined(venue_id: int, minutes: int = 120, _: str = Depends(require_login)):
+    db: Session = SessionLocal()
+    try:
+        occ = occupancy_counts(db, window_minutes=minutes)          # presence (active)
+        rstats = get_venue_rating_stats(db, venue_id=venue_id, minutes=minutes)  # ratings
+        return VenueStatsResponse(
+            venue_id=venue_id,
+            active_count=occ.get(venue_id, 0),
+            window_minutes=minutes,
+            avg_occupancy=rstats["avg_occupancy"],
+            avg_noise=rstats["avg_noise"],
+            rating_count=rstats["rating_count"],
+            last_updated=datetime.now(timezone.utc),
+        )
+    finally:
+        db.close()
+
+# -----------------------------------------------------------------------------
+# Presence API (active check-ins) - heat calculation
 # -----------------------------------------------------------------------------
 @app.get("/venues")
 def list_venues(_: str = Depends(require_login), db: Session = Depends(get_db)):
@@ -226,21 +261,42 @@ def list_venues(_: str = Depends(require_login), db: Session = Depends(get_db)):
         for r in rows
     ]
 
-@app.get("/venues/with_occupancy")
-def venues_with_occupancy(_: str = Depends(require_login), db: Session = Depends(get_db)):
-    rows = db.execute(OCC_SQL).mappings().all()
-    return [
-        {
-            "id": r["id"],
-            "name": r["name"],
-            "lat": r["lat"],
-            "lon": r["lon"],
-            "capacity": r["capacity"],
-            "occupancy": r["occupancy"],
-            "ratio": (r["occupancy"] / r["capacity"]) if r["capacity"] else 0.0,
-        }
-        for r in rows
-    ]
+@app.get("/venues/with_occupancy", response_model=list[VenueWithMetrics])
+def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)):
+    db: Session = SessionLocal()
+    try:
+        occ = occupancy_counts(db, window_minutes=window)
+        rows = db.execute(text("""
+            SELECT id, name, capacity,
+                   ST_Y(geom::geometry) AS lat,
+                   ST_X(geom::geometry) AS lon
+            FROM venues
+            ORDER BY name
+        """)).mappings().all()
+
+        ratings = get_all_rating_stats(db, minutes=window)
+
+        out: list[VenueWithMetrics] = []
+        for r in rows:
+            vid = int(r["id"])
+            occupancy_val = int(occ.get(vid, 0))
+            ratio = float(occupancy_val / r["capacity"]) if r["capacity"] else 0.0
+            rstats = ratings.get(vid, {"avg_occupancy": None, "avg_noise": None, "rating_count": 0})
+            out.append(VenueWithMetrics(
+                id=vid,
+                name=str(r["name"]),
+                lat=float(r["lat"]),
+                lon=float(r["lon"]),
+                capacity=int(r["capacity"]),
+                occupancy=occupancy_val,
+                ratio=ratio,
+                avg_occupancy=rstats["avg_occupancy"],
+                avg_noise=rstats["avg_noise"],
+                rating_count=rstats["rating_count"],
+            ))
+        return out
+    finally:
+        db.close()
 
 @app.get("/venues.geojson")
 def venues_geojson(_: str = Depends(require_login), db: Session = Depends(get_db)) -> JSONResponse:
@@ -352,7 +408,6 @@ def web_map(_: str = Depends(require_login)) -> HTMLResponse:
     const layerGroup = L.layerGroup().addTo(map);
 
     function colorFor(ratio) {
-      // green -> yellow -> orange -> red
       if (ratio <= 0.25) return '#2ecc71';
       if (ratio <= 0.50) return '#bada55';
       if (ratio <= 0.75) return '#f1c40f';
@@ -376,9 +431,12 @@ def web_map(_: str = Depends(require_login)) -> HTMLResponse:
         const marker = L.circleMarker([v.lat, v.lon], {
           radius, color, fillColor: color, fillOpacity: 0.75, weight: heatmapOn ? 0 : 2
         }).bindPopup(`
-          <b>${v.name}</b><br/>
-          ${v.occupancy}/${v.capacity} occupied (${Math.round(ratio*100)}%)<br/>
-          <button class="btn" id="btn-${v.id}">Check in here</button>
+            <b>${v.name}</b><br/>
+            Presence: ${v.occupancy}/${v.capacity} (${Math.round((v.ratio||0)*100)}%)<br/>
+            ${v.avg_occupancy != null ? `Avg crowd: ${v.avg_occupancy.toFixed(1)}/5` : `Avg crowd: n/a`}<br/>
+            ${v.avg_noise != null ? `Avg noise: ${v.avg_noise.toFixed(1)}/5` : `Avg noise: n/a`}<br/>
+            Ratings: ${v.rating_count}
+            <br/><button class="btn" id="btn-${v.id}">Check in here</button>
         `);
 
         marker.on('popupopen', () => {
@@ -404,7 +462,7 @@ def web_map(_: str = Depends(require_login)) -> HTMLResponse:
       render(venues);
     }
 
-    // Toggle control
+    // Toggle + checkout
     const ctrl = L.control({ position: 'topright' });
     ctrl.onAdd = function() {
       const div = L.DomUtil.create('div', 'control-box');
@@ -435,9 +493,8 @@ def web_map(_: str = Depends(require_login)) -> HTMLResponse:
       }
     });
 
-    // Polling + heartbeat
     fetchAndRender();
-    setInterval(fetchAndRender, 15000); // refresh every 15s
+    setInterval(fetchAndRender, 15000);
     setInterval(() => fetch('/checkins/heartbeat', { method: 'POST', credentials: 'include' }), 60000);
   </script>
 </body>
