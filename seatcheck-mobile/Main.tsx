@@ -1,5 +1,4 @@
-// SeatCheck – MVP UI (React Native + Expo) - Main.tsx
-// Tabs: Home (tiles), Map, Check In, Settings
+// SeatCheck MVP UI
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -52,7 +51,7 @@ try {
   );
 }
 
-// --- Navigation types ---
+// Navigation types
 type RootTabParamList = {
   Home: undefined;
   Map: undefined;
@@ -65,7 +64,7 @@ type RootStackParamList = {
   Details: { id: string };
 };
 
-// Map imports - ONLY for native platforms
+// Map imports
 let MapView: any = null;
 let Heatmap: any = null;
 let Marker: any = null;
