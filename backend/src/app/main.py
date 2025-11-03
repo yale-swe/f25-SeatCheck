@@ -17,17 +17,17 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.app.schemas import (
+from app.schemas import (
     RatingCreate, RatingResponse, VenueWithMetrics, VenueStatsResponse,
     CheckInIn, CheckInOut,
 )
-from src.app.crud.presence import (
+from app.crud.presence import (
     end_active_for_user, create_presence_checkin, heartbeat_active, occupancy_counts,
 )
-from src.app.crud.ratings import (
+from app.crud.ratings import (
     create_rating, get_venue_rating_stats, get_all_rating_stats,
 )
-from src.app.db import SessionLocal
+from app.db import SessionLocal
 
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(filename=".env"))
