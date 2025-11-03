@@ -1,5 +1,7 @@
 {
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "^54.0.21",
     "react-native-maps": "^1.26.18"
   }
 }
