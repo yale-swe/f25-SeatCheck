@@ -2,8 +2,9 @@
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 
 def create_rating(
     db: Session,
@@ -40,8 +41,9 @@ def get_venue_rating_stats(
 ) -> dict[str, Optional[float | int]]:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
 
-    row = db.execute(
-        text("""
+    row = (
+        db.execute(
+            text("""
             SELECT
               AVG(occupancy)::float  AS avg_occupancy,
               AVG(noise)::float      AS avg_noise,
@@ -50,8 +52,11 @@ def get_venue_rating_stats(
             WHERE venue_id = :venue_id
               AND created_at >= :cutoff
         """),
-        {"venue_id": venue_id, "cutoff": cutoff},
-    ).mappings().first()
+            {"venue_id": venue_id, "cutoff": cutoff},
+        )
+        .mappings()
+        .first()
+    )
 
     if not row:
         return {"avg_occupancy": None, "avg_noise": None, "rating_count": 0}
@@ -62,14 +67,16 @@ def get_venue_rating_stats(
         "rating_count": row["rating_count"],
     }
 
+
 def get_all_rating_stats(
     db: Session,
     minutes: int = 120,
 ) -> dict[int, dict[str, Optional[float | int]]]:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
 
-    rows = db.execute(
-        text("""
+    rows = (
+        db.execute(
+            text("""
             SELECT
               venue_id,
               AVG(occupancy)::float  AS avg_occupancy,
@@ -79,10 +86,13 @@ def get_all_rating_stats(
             WHERE created_at >= :cutoff
             GROUP BY venue_id
         """),
-        {"cutoff": cutoff},
-    ).mappings().all()
+            {"cutoff": cutoff},
+        )
+        .mappings()
+        .all()
+    )
 
-    stats: dict[int, dict[str, Optional[float | int]]]= {}
+    stats: dict[int, dict[str, Optional[float | int]]] = {}
     for r in rows:
         stats[int(r["venue_id"])] = {
             "avg_occupancy": r["avg_occupancy"],

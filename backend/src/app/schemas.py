@@ -4,13 +4,16 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 
+
 # ---- presence check-in (your existing model) ----
 class CheckInIn(BaseModel):
     venue_id: int = Field(gt=0)
 
+
 class CheckInOut(BaseModel):
     venue_id: int
     active: bool
+
 
 # ---- ratings (David-style) ----
 class RatingCreate(BaseModel):
@@ -19,6 +22,7 @@ class RatingCreate(BaseModel):
     noise: int = Field(ge=0, le=5, description="0 silent .. 5 very loud")
     anonymous: bool = Field(default=True)
 
+
 class RatingResponse(BaseModel):
     id: int
     venue_id: int
@@ -26,6 +30,7 @@ class RatingResponse(BaseModel):
     noise: int
     anonymous: bool
     created_at: datetime
+
 
 # ---- combined venue metrics ----
 class VenueWithMetrics(BaseModel):
@@ -41,6 +46,7 @@ class VenueWithMetrics(BaseModel):
     avg_occupancy: Optional[float] = None
     avg_noise: Optional[float] = None
     rating_count: int = 0
+
 
 class VenueStatsResponse(BaseModel):
     venue_id: int

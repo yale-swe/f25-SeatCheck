@@ -54,14 +54,18 @@ def occupancy_counts(db: Session, window_minutes: int = 120) -> Dict[int, int]:
     and have a last_seen_at within the window.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
-    rows = db.execute(
-        text("""
+    rows = (
+        db.execute(
+            text("""
             SELECT venue_id, COUNT(*) AS cnt
             FROM checkins
             WHERE checkout_at IS NULL
               AND last_seen_at >= :cutoff
             GROUP BY venue_id
         """),
-        {"cutoff": cutoff},
-    ).mappings().all()
+            {"cutoff": cutoff},
+        )
+        .mappings()
+        .all()
+    )
     return {int(r["venue_id"]): int(r["cnt"]) for r in rows}

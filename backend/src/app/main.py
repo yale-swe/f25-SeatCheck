@@ -11,25 +11,31 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.schemas import (
-    RatingCreate, RatingResponse, VenueWithMetrics, VenueStatsResponse,
-    CheckInIn, CheckInOut,
+    RatingCreate,
+    RatingResponse,
+    VenueWithMetrics,
+    VenueStatsResponse,
+    CheckInIn,
+    CheckInOut,
 )
 from app.crud.presence import (
-    end_active_for_user, create_presence_checkin, heartbeat_active, occupancy_counts,
+    occupancy_counts,
 )
 from app.crud.ratings import (
-    create_rating, get_venue_rating_stats, get_all_rating_stats,
+    create_rating,
+    get_venue_rating_stats,
+    get_all_rating_stats,
 )
 from app.db import SessionLocal
 
 from dotenv import load_dotenv, find_dotenv
+
 load_dotenv(find_dotenv(filename=".env"))
 
 # -----------------------------------------------------------------------------
@@ -47,7 +53,9 @@ default_origins = [
     "http://localhost:19006",
     "http://127.0.0.1:19006",
 ]
-extra_origins = os.getenv("DEV_ORIGINS", "").split(",") if os.getenv("DEV_ORIGINS") else []
+extra_origins = (
+    os.getenv("DEV_ORIGINS", "").split(",") if os.getenv("DEV_ORIGINS") else []
+)
 DEV_ORIGINS = list(set(default_origins + extra_origins))
 
 app.add_middleware(
@@ -74,10 +82,12 @@ app.add_middleware(
 CAS_BASE = os.getenv("CAS_BASE", "https://secure.its.yale.edu/cas")
 SERVICE_PATH = "/auth/cas/callback"
 
+
 def service_url(request: Request) -> str:
     host = request.headers.get("host", "localhost:8000")
     scheme = "https" if request.url.scheme == "https" else "http"
     return f"{scheme}://{host}{SERVICE_PATH}"
+
 
 # -----------------------------------------------------------------------------
 # Auth helper (define BEFORE routes that reference it)
@@ -88,6 +98,7 @@ def require_login(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return str(netid)
 
+
 # -----------------------------------------------------------------------------
 # DB dependency
 # -----------------------------------------------------------------------------
@@ -97,6 +108,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 # -----------------------------------------------------------------------------
 # SQL helpers
@@ -125,12 +137,14 @@ LEFT JOIN (
 ORDER BY v.name
 """)
 
+
 # -----------------------------------------------------------------------------
 # Root redirect
 # -----------------------------------------------------------------------------
 @app.get("/")
 def root_redirect() -> RedirectResponse:
     return RedirectResponse(url=f"{APP_BASE}/", status_code=302)
+
 
 # -----------------------------------------------------------------------------
 # CAS routes
@@ -139,6 +153,7 @@ def root_redirect() -> RedirectResponse:
 def cas_login(request: Request) -> RedirectResponse:
     svc = urllib.parse.quote(service_url(request), safe="")
     return RedirectResponse(f"{CAS_BASE}/login?service={svc}", status_code=302)
+
 
 @app.get(SERVICE_PATH)
 async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
@@ -163,15 +178,19 @@ async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
         netid = ""
 
     if not netid:
-        return RedirectResponse(url=f"{APP_BASE}/login?error=cas_failed", status_code=302)
+        return RedirectResponse(
+            url=f"{APP_BASE}/login?error=cas_failed", status_code=302
+        )
 
     request.session["netid"] = netid
     return RedirectResponse(url=f"{APP_BASE}/", status_code=302)
+
 
 # -----------------------------------------------------------------------------
 # Dev-only login (no CAS)
 # -----------------------------------------------------------------------------
 DEV_AUTH = os.getenv("DEV_AUTH", "1") == "1"
+
 
 @app.get("/auth/dev/login")
 def dev_login(request: Request, netid: str = "dev001"):
@@ -180,12 +199,14 @@ def dev_login(request: Request, netid: str = "dev001"):
     request.session["netid"] = netid
     return RedirectResponse(url=f"{APP_BASE}/", status_code=status.HTTP_302_FOUND)
 
+
 @app.post("/auth/dev/logout")
 def dev_logout(request: Request):
     if not DEV_AUTH:
         raise HTTPException(status_code=404, detail="Disabled")
     request.session.clear()
     return {"ok": True}
+
 
 # -----------------------------------------------------------------------------
 # Debug / Auth endpoints
@@ -194,6 +215,7 @@ def dev_logout(request: Request):
 def whoami(request: Request):
     return {"netid": request.session.get("netid")}
 
+
 @app.get("/auth/me")
 def me(request: Request) -> Dict[str, str]:
     netid = request.session.get("netid")
@@ -201,15 +223,21 @@ def me(request: Request) -> Dict[str, str]:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {"netid": netid}
 
+
 @app.post("/auth/logout")
 def logout(request: Request) -> Dict[str, bool]:
     request.session.clear()
     return {"ok": True}
 
+
 # -----------------------------------------------------------------------------
 # Ratings API (anonymous crowd/noise) - David-style
 # -----------------------------------------------------------------------------
-@app.post("/api/v1/checkins", response_model=RatingResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/v1/checkins",
+    response_model=RatingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_rating_checkin(payload: RatingCreate, netid: str = Depends(require_login)):
     db: Session = SessionLocal()
     try:
@@ -232,12 +260,17 @@ def create_rating_checkin(payload: RatingCreate, netid: str = Depends(require_lo
     finally:
         db.close()
 
+
 @app.get("/api/v1/venues/{venue_id}/stats", response_model=VenueStatsResponse)
-def venue_stats_combined(venue_id: int, minutes: int = 120, _: str = Depends(require_login)):
+def venue_stats_combined(
+    venue_id: int, minutes: int = 120, _: str = Depends(require_login)
+):
     db: Session = SessionLocal()
     try:
-        occ = occupancy_counts(db, window_minutes=minutes)          # presence (active)
-        rstats = get_venue_rating_stats(db, venue_id=venue_id, minutes=minutes)  # ratings
+        occ = occupancy_counts(db, window_minutes=minutes)  # presence (active)
+        rstats = get_venue_rating_stats(
+            db, venue_id=venue_id, minutes=minutes
+        )  # ratings
         return VenueStatsResponse(
             venue_id=venue_id,
             active_count=occ.get(venue_id, 0),
@@ -250,6 +283,7 @@ def venue_stats_combined(venue_id: int, minutes: int = 120, _: str = Depends(req
     finally:
         db.close()
 
+
 # -----------------------------------------------------------------------------
 # Presence API (active check-ins) - heat calculation
 # -----------------------------------------------------------------------------
@@ -257,22 +291,35 @@ def venue_stats_combined(venue_id: int, minutes: int = 120, _: str = Depends(req
 def list_venues(_: str = Depends(require_login), db: Session = Depends(get_db)):
     rows = db.execute(VENUES_SQL).mappings().all()
     return [
-        {"id": r["id"], "name": r["name"], "capacity": r["capacity"], "lat": r["lat"], "lon": r["lon"]}
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "capacity": r["capacity"],
+            "lat": r["lat"],
+            "lon": r["lon"],
+        }
         for r in rows
     ]
+
 
 @app.get("/venues/with_occupancy", response_model=list[VenueWithMetrics])
 def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)):
     db: Session = SessionLocal()
     try:
         occ = occupancy_counts(db, window_minutes=window)
-        rows = db.execute(text("""
+        rows = (
+            db.execute(
+                text("""
             SELECT id, name, capacity,
                    ST_Y(geom::geometry) AS lat,
                    ST_X(geom::geometry) AS lon
             FROM venues
             ORDER BY name
-        """)).mappings().all()
+        """)
+            )
+            .mappings()
+            .all()
+        )
 
         ratings = get_all_rating_stats(db, minutes=window)
 
@@ -281,45 +328,59 @@ def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)):
             vid = int(r["id"])
             occupancy_val = int(occ.get(vid, 0))
             ratio = float(occupancy_val / r["capacity"]) if r["capacity"] else 0.0
-            rstats = ratings.get(vid, {"avg_occupancy": None, "avg_noise": None, "rating_count": 0})
-            out.append(VenueWithMetrics(
-                id=vid,
-                name=str(r["name"]),
-                lat=float(r["lat"]),
-                lon=float(r["lon"]),
-                capacity=int(r["capacity"]),
-                occupancy=occupancy_val,
-                ratio=ratio,
-                avg_occupancy=rstats["avg_occupancy"],
-                avg_noise=rstats["avg_noise"],
-                rating_count=rstats["rating_count"],
-            ))
+            rstats = ratings.get(
+                vid, {"avg_occupancy": None, "avg_noise": None, "rating_count": 0}
+            )
+            out.append(
+                VenueWithMetrics(
+                    id=vid,
+                    name=str(r["name"]),
+                    lat=float(r["lat"]),
+                    lon=float(r["lon"]),
+                    capacity=int(r["capacity"]),
+                    occupancy=occupancy_val,
+                    ratio=ratio,
+                    avg_occupancy=rstats["avg_occupancy"],
+                    avg_noise=rstats["avg_noise"],
+                    rating_count=rstats["rating_count"],
+                )
+            )
         return out
     finally:
         db.close()
 
+
 @app.get("/venues.geojson")
-def venues_geojson(_: str = Depends(require_login), db: Session = Depends(get_db)) -> JSONResponse:
+def venues_geojson(
+    _: str = Depends(require_login), db: Session = Depends(get_db)
+) -> JSONResponse:
     rows = db.execute(OCC_SQL).mappings().all()
     features: List[Dict[str, object]] = []
     for r in rows:
         ratio = (r["occupancy"] / r["capacity"]) if r["capacity"] else 0.0
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
-            "properties": {
-                "id": r["id"],
-                "name": r["name"],
-                "capacity": r["capacity"],
-                "occupancy": r["occupancy"],
-                "ratio": ratio,
-            },
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
+                "properties": {
+                    "id": r["id"],
+                    "name": r["name"],
+                    "capacity": r["capacity"],
+                    "occupancy": r["occupancy"],
+                    "ratio": ratio,
+                },
+            }
+        )
     return JSONResponse({"type": "FeatureCollection", "features": features})
 
+
 @app.get("/checkins")
-def get_checkins(window: int = 120, _: str = Depends(require_login), db: Session = Depends(get_db)):
-    rows = db.execute(text(f"""
+def get_checkins(
+    window: int = 120, _: str = Depends(require_login), db: Session = Depends(get_db)
+):
+    rows = (
+        db.execute(
+            text(f"""
         SELECT v.id AS venue_id,
                COALESCE(o.count, 0) AS count
         FROM venues v
@@ -331,41 +392,70 @@ def get_checkins(window: int = 120, _: str = Depends(require_login), db: Session
           GROUP BY venue_id
         ) o ON o.venue_id = v.id
         ORDER BY v.id
-    """)).mappings().all()
-    return [{"venue_id": r["venue_id"], "count": r["count"], "window_minutes": window} for r in rows]
+    """)
+        )
+        .mappings()
+        .all()
+    )
+    return [
+        {"venue_id": r["venue_id"], "count": r["count"], "window_minutes": window}
+        for r in rows
+    ]
+
 
 @app.post("/checkins", response_model=CheckInOut)
-def create_checkin(ci: CheckInIn, netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
+def create_checkin(
+    ci: CheckInIn, netid: str = Depends(require_login), db: Session = Depends(get_db)
+) -> CheckInOut:
     # end any existing active check-in for this user, then create new
-    db.execute(text("""
+    db.execute(
+        text("""
         UPDATE checkins SET checkout_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
-    """), {"netid": netid})
-    db.execute(text("""
+    """),
+        {"netid": netid},
+    )
+    db.execute(
+        text("""
         INSERT INTO checkins (netid, venue_id) VALUES (:netid, :venue_id)
-    """), {"netid": netid, "venue_id": ci.venue_id})
+    """),
+        {"netid": netid, "venue_id": ci.venue_id},
+    )
     db.commit()
     return CheckInOut(venue_id=ci.venue_id, active=True)
 
+
 @app.post("/checkins/heartbeat", response_model=CheckInOut)
-def heartbeat(netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
-    row = db.execute(text("""
+def heartbeat(
+    netid: str = Depends(require_login), db: Session = Depends(get_db)
+) -> CheckInOut:
+    row = db.execute(
+        text("""
         UPDATE checkins SET last_seen_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
         RETURNING venue_id
-    """), {"netid": netid}).fetchone()
+    """),
+        {"netid": netid},
+    ).fetchone()
     db.commit()
     return CheckInOut(venue_id=(row.venue_id if row else -1), active=bool(row))
 
+
 @app.post("/checkins/checkout", response_model=CheckInOut)
-def checkout(netid: str = Depends(require_login), db: Session = Depends(get_db)) -> CheckInOut:
-    row = db.execute(text("""
+def checkout(
+    netid: str = Depends(require_login), db: Session = Depends(get_db)
+) -> CheckInOut:
+    row = db.execute(
+        text("""
         UPDATE checkins SET checkout_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
         RETURNING venue_id
-    """), {"netid": netid}).fetchone()
+    """),
+        {"netid": netid},
+    ).fetchone()
     db.commit()
     return CheckInOut(venue_id=(row.venue_id if row else -1), active=False)
+
 
 # -----------------------------------------------------------------------------
 # Public
@@ -373,6 +463,7 @@ def checkout(netid: str = Depends(require_login), db: Session = Depends(get_db))
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+
 
 # -----------------------------------------------------------------------------
 # Simple web map (protected)
