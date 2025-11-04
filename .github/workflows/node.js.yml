@@ -12,7 +12,6 @@ jobs:
   lint-and-typecheck:
     name: Run pre-commit (Ruff, mypy, format checks)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,27 +22,48 @@ jobs:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v2
-        with:
-          version: "latest"
+        uses: astral-sh/setup-uv@v3
 
-      - name: Install dependencies
+      - name: Install backend deps
         working-directory: backend
         run: uv sync
 
-      - name: Install pre-commit
-        run: pip install pre-commit
-
+      # If your mypy hook needs src on sys.path, expose it here too
       - name: Run pre-commit hooks
-        run: pre-commit run --all-files
+        env:
+          PYTHONPATH: backend/src
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
 
   # ----------------------------
-  # 2. Backend Tests (Python)
+  # 2. Backend Tests (Python + PostGIS)
   # ----------------------------
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
     needs: lint-and-typecheck
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: seatcheck
+          POSTGRES_USER: seatcheck
+          POSTGRES_PASSWORD: seatcheck
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U seatcheck -d seatcheck"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://seatcheck:seatcheck@localhost:5432/seatcheck
+      DEV_AUTH: "1"
+      APP_BASE: "http://localhost:8081"
+      PYTHONPATH: backend/src   # so "from app..." works even during tooling
 
     steps:
       - name: Checkout code
@@ -55,11 +75,53 @@ jobs:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v2
-        with:
-          version: "latest"
+        uses: astral-sh/setup-uv@v3
 
-      - name: Install dependencies
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Init PostGIS schema + seed
+        working-directory: backend
+        run: |
+          set -e
+          PSQL="psql postgresql://seatcheck:seatcheck@localhost:5432/seatcheck -v ON_ERROR_STOP=1"
+
+          $PSQL <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS postgis;
+
+          -- Minimal schema for your endpoints
+          CREATE TABLE IF NOT EXISTS venues (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            capacity INTEGER NOT NULL DEFAULT 100,
+            geom geometry(Point, 4326) NOT NULL
+          );
+
+          CREATE TABLE IF NOT EXISTS checkins (
+            id SERIAL PRIMARY KEY,
+            netid TEXT NOT NULL,
+            venue_id INTEGER NOT NULL REFERENCES venues(id),
+            last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+            checkout_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE IF NOT EXISTS checkins_ratings (
+            id SERIAL PRIMARY KEY,
+            venue_id INTEGER NOT NULL REFERENCES venues(id),
+            occupancy INTEGER NOT NULL,
+            noise INTEGER NOT NULL,
+            anonymous BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          -- Seed at least one venue
+          INSERT INTO venues (name, capacity, geom)
+          VALUES ('Bass Library', 300, ST_SetSRID(ST_MakePoint(-72.927, 41.309), 4326))
+          ON CONFLICT DO NOTHING;
+          SQL
+
+
+      - name: Install backend deps
         working-directory: backend
         run: uv sync
 
@@ -74,7 +136,6 @@ jobs:
     name: Frontend Tests
     runs-on: ubuntu-latest
     needs: lint-and-typecheck
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,6 +144,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: seat-check/package-lock.json
 
       - name: Install dependencies
         working-directory: seat-check
@@ -90,4 +153,7 @@ jobs:
 
       - name: Run frontend tests
         working-directory: seat-check
+        env:
+          # So frontend code builds/tests against the same base as dev
+          EXPO_PUBLIC_API_BASE: "http://localhost:8000"
         run: npm test -- --run

@@ -1,0 +1,11 @@
+:root{
+  --navy-900:#0b1324;
+  --navy-800:#0e1a33;
+  --navy-700:#112142;
+  --ink:#e8edf5;
+  --ink-dim:#b9c3d6;
+  --accent:#2b6cf6;
+  --border:#1e2b48;
+}
+html,body,#root{background:var(--navy-900); color:var(--ink);}
+a{color:var(--accent);}
