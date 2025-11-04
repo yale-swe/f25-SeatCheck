@@ -89,6 +89,7 @@ jobs:
           $PSQL <<'SQL'
           CREATE EXTENSION IF NOT EXISTS postgis;
 
+          -- Minimal schema for your endpoints
           CREATE TABLE IF NOT EXISTS venues (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
@@ -104,10 +105,21 @@ jobs:
             checkout_at TIMESTAMPTZ
           );
 
+          CREATE TABLE IF NOT EXISTS checkins_ratings (
+            id SERIAL PRIMARY KEY,
+            venue_id INTEGER NOT NULL REFERENCES venues(id),
+            occupancy INTEGER NOT NULL,
+            noise INTEGER NOT NULL,
+            anonymous BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          -- Seed at least one venue
           INSERT INTO venues (name, capacity, geom)
           VALUES ('Bass Library', 300, ST_SetSRID(ST_MakePoint(-72.927, 41.309), 4326))
           ON CONFLICT DO NOTHING;
           SQL
+
 
       - name: Install backend deps
         working-directory: backend
