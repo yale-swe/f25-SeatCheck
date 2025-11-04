@@ -1,21 +1,41 @@
-"""Venue related schemas (Pydantic models)."""
+"""Venue-related schemas (Pydantic models)."""
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+
+class Venue(BaseModel):
+    id: int
+    name: str
+    capacity: int
+    lat: float
+    lon: float
+
+
+class VenueWithMetrics(Venue):
+    occupancy: int
+    ratio: float
+    avg_occupancy: Optional[float] = None
+    avg_noise: Optional[float] = None
+    rating_count: int = 0
+
+
+class VenueStatsResponse(BaseModel):
+    venue_id: int
+    active_count: int
+    window_minutes: int
+    avg_occupancy: Optional[float] = None
+    avg_noise: Optional[float] = None
+    rating_count: int = 0
+    last_updated: datetime
 
 
 class VenueStatus(BaseModel):
-    """Detailed status information for a venue including heatmap metrics."""
-
     venue_id: int
     venue_name: str
-    availability: float = Field(
-        ge=0.0, le=1.0, description="Availability score: 0=full, 1=empty"
-    )
-    avg_occupancy: float = Field(ge=0.0, le=5.0, description="Average occupancy level")
-    avg_noise: float = Field(ge=0.0, le=5.0, description="Average noise level")
-    recent_checkins_count: int = Field(description="Number of check-ins in last hour")
-    last_updated: Optional[datetime] = Field(
-        description="Timestamp of most recent check-in"
-    )
+    availability: float  # 0=full, 1=empty
+    avg_occupancy: float
+    avg_noise: float
+    recent_checkins_count: int
+    last_updated: Optional[datetime] = None

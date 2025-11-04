@@ -21,12 +21,10 @@ from app.schemas import (
     RatingResponse,
     VenueWithMetrics,
     VenueStatsResponse,
-    CheckInIn,
-    CheckInOut,
+    CheckInIn,  # ← presence shapes
+    CheckInOut,  # ← presence shapes
 )
-from app.crud.presence import (
-    occupancy_counts,
-)
+from app.crud.presence import occupancy_counts
 from app.crud.ratings import (
     create_rating,
     get_venue_rating_stats,
@@ -113,15 +111,18 @@ def get_db():
 # -----------------------------------------------------------------------------
 # SQL helpers
 # -----------------------------------------------------------------------------
-VENUES_SQL = text("""
+VENUES_SQL = text(
+    """
 SELECT id, name, capacity,
        ST_Y(geom::geometry) AS lat,
        ST_X(geom::geometry) AS lon
 FROM venues
 ORDER BY name
-""")
+"""
+)
 
-OCC_SQL = text("""
+OCC_SQL = text(
+    """
 SELECT v.id, v.name, v.capacity,
        ST_Y(v.geom::geometry) AS lat,
        ST_X(v.geom::geometry) AS lon,
@@ -135,7 +136,8 @@ LEFT JOIN (
   GROUP BY venue_id
 ) o ON o.venue_id = v.id
 ORDER BY v.name
-""")
+"""
+)
 
 
 # -----------------------------------------------------------------------------
@@ -231,7 +233,7 @@ def logout(request: Request) -> Dict[str, bool]:
 
 
 # -----------------------------------------------------------------------------
-# Ratings API (anonymous crowd/noise) - David-style
+# Ratings API (anonymous crowd/noise)
 # -----------------------------------------------------------------------------
 @app.post(
     "/api/v1/checkins",
@@ -244,10 +246,10 @@ def create_rating_checkin(payload: RatingCreate, netid: str = Depends(require_lo
         row = create_rating(
             db,
             venue_id=payload.venue_id,
-            # you can decide to store netid or not in ratings; schema is anonymous
             occupancy=payload.occupancy,
             noise=payload.noise,
             anonymous=payload.anonymous,
+            netid=netid,  # ensure we pass netid to CRUD
         )
         return RatingResponse(
             id=int(row.id),
@@ -277,7 +279,7 @@ def venue_stats_combined(
             window_minutes=minutes,
             avg_occupancy=rstats["avg_occupancy"],
             avg_noise=rstats["avg_noise"],
-            rating_count=rstats["rating_count"],
+            rating_count=int(rstats["rating_count"] or 0),  # cast to int
             last_updated=datetime.now(timezone.utc),
         )
     finally:
@@ -309,13 +311,15 @@ def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)):
         occ = occupancy_counts(db, window_minutes=window)
         rows = (
             db.execute(
-                text("""
+                text(
+                    """
             SELECT id, name, capacity,
                    ST_Y(geom::geometry) AS lat,
                    ST_X(geom::geometry) AS lon
             FROM venues
             ORDER BY name
-        """)
+        """
+                )
             )
             .mappings()
             .all()
@@ -342,7 +346,7 @@ def venues_with_occupancy(window: int = 120, _: str = Depends(require_login)):
                     ratio=ratio,
                     avg_occupancy=rstats["avg_occupancy"],
                     avg_noise=rstats["avg_noise"],
-                    rating_count=rstats["rating_count"],
+                    rating_count=int(rstats["rating_count"] or 0),  # cast to int
                 )
             )
         return out
@@ -380,7 +384,8 @@ def get_checkins(
 ):
     rows = (
         db.execute(
-            text(f"""
+            text(
+                f"""
         SELECT v.id AS venue_id,
                COALESCE(o.count, 0) AS count
         FROM venues v
@@ -392,7 +397,8 @@ def get_checkins(
           GROUP BY venue_id
         ) o ON o.venue_id = v.id
         ORDER BY v.id
-    """)
+    """
+            )
         )
         .mappings()
         .all()
@@ -409,20 +415,24 @@ def create_checkin(
 ) -> CheckInOut:
     # end any existing active check-in for this user, then create new
     db.execute(
-        text("""
+        text(
+            """
         UPDATE checkins SET checkout_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
-    """),
+    """
+        ),
         {"netid": netid},
     )
     db.execute(
-        text("""
+        text(
+            """
         INSERT INTO checkins (netid, venue_id) VALUES (:netid, :venue_id)
-    """),
+    """
+        ),
         {"netid": netid, "venue_id": ci.venue_id},
     )
     db.commit()
-    return CheckInOut(venue_id=ci.venue_id, active=True)
+    return CheckInOut(venue_id=int(ci.venue_id), active=True)
 
 
 @app.post("/checkins/heartbeat", response_model=CheckInOut)
@@ -430,15 +440,17 @@ def heartbeat(
     netid: str = Depends(require_login), db: Session = Depends(get_db)
 ) -> CheckInOut:
     row = db.execute(
-        text("""
+        text(
+            """
         UPDATE checkins SET last_seen_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
         RETURNING venue_id
-    """),
+    """
+        ),
         {"netid": netid},
     ).fetchone()
     db.commit()
-    return CheckInOut(venue_id=(row.venue_id if row else -1), active=bool(row))
+    return CheckInOut(venue_id=(int(row.venue_id) if row else -1), active=bool(row))
 
 
 @app.post("/checkins/checkout", response_model=CheckInOut)
@@ -446,15 +458,17 @@ def checkout(
     netid: str = Depends(require_login), db: Session = Depends(get_db)
 ) -> CheckInOut:
     row = db.execute(
-        text("""
+        text(
+            """
         UPDATE checkins SET checkout_at = now()
         WHERE netid = :netid AND checkout_at IS NULL
         RETURNING venue_id
-    """),
+    """
+        ),
         {"netid": netid},
     ).fetchone()
     db.commit()
-    return CheckInOut(venue_id=(row.venue_id if row else -1), active=False)
+    return CheckInOut(venue_id=(int(row.venue_id) if row else -1), active=False)
 
 
 # -----------------------------------------------------------------------------
