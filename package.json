@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.3.3",
+    "jsdom": "^27.2.0",
+    "vitest-canvas-mock": "^0.3.3"
+  }
+}
