@@ -136,7 +136,7 @@ def test_id_is_primary_key_constraint():
 def test_verified_has_default_false():
     verified_col = Venue.__table__.columns['verified']
     assert verified_col.default is not None
-    assert verified_col.default.arg == False
+    assert not verified_col.default.arg
 
 
 def test_timestamps_have_server_defaults():
