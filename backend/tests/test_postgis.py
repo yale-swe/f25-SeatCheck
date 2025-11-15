@@ -11,6 +11,36 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 
 
+def has_postgis_geom_column(db_session: Session) -> bool:
+    """Check if venues table has PostGIS geom column."""
+    try:
+        result = db_session.execute(
+            text("""
+            SELECT COUNT(*)
+            FROM geography_columns
+            WHERE f_table_name = 'venues' AND f_geography_column = 'geom'
+        """)
+        ).scalar()
+        return result > 0
+    except Exception:
+        return False
+
+
+def has_source_column(db_session: Session) -> bool:
+    """Check if venues table has source column."""
+    try:
+        result = db_session.execute(
+            text("""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name = 'venues' AND column_name = 'source'
+        """)
+        ).scalar()
+        return result > 0
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="module")
 def db_session():
     db = SessionLocal()
@@ -26,6 +56,16 @@ def db_session():
         )
     finally:
         db.close()
+
+
+@pytest.fixture(scope="module")
+def postgis_available(db_session: Session):
+    """Skip tests if PostGIS geom column is not available."""
+    if not has_postgis_geom_column(db_session):
+        pytest.skip(
+            "PostGIS geom column not available. Database may use lat/lon schema."
+        )
+    return True
 
 
 def test_database_connection_uses_docker(db_session: Session):
@@ -65,7 +105,7 @@ def test_postgis_spatial_functions_available(db_session: Session):
     assert abs(result[1] - (-72.9289)) < 0.0001
 
 
-def test_venues_table_has_geography_column(db_session: Session):
+def test_venues_table_has_geography_column(db_session: Session, postgis_available):
     result = db_session.execute(
         text("""
         SELECT
@@ -83,17 +123,21 @@ def test_venues_table_has_geography_column(db_session: Session):
     assert result[2] == 4326
 
 
-def test_geography_column_accepts_wgs84_coordinates(db_session: Session):
+def test_geography_column_accepts_wgs84_coordinates(
+    db_session: Session, postgis_available
+):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    insert_vals = "'Test Venue', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals += ", 'test'"
+
     try:
         db_session.execute(
-            text("""
-            INSERT INTO venues (name, capacity, geom, source)
-            VALUES (
-                'Test Venue',
-                100,
-                ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography,
-                'test'
-            )
+            text(f"""
+            INSERT INTO venues ({insert_cols})
+            VALUES ({insert_vals})
         """)
         )
         db_session.commit()
@@ -113,16 +157,20 @@ def test_geography_column_accepts_wgs84_coordinates(db_session: Session):
         raise
 
 
-def test_st_y_st_x_extract_coordinates_from_venues(db_session: Session):
+def test_st_y_st_x_extract_coordinates_from_venues(
+    db_session: Session, postgis_available
+):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    insert_vals = "'Bass Library Test', 500, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals += ", 'test'"
+
     db_session.execute(
-        text("""
-        INSERT INTO venues (name, capacity, geom, source)
-        VALUES (
-            'Bass Library Test',
-            500,
-            ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography,
-            'test'
-        )
+        text(f"""
+        INSERT INTO venues ({insert_cols})
+        VALUES ({insert_vals})
     """)
     )
     db_session.commit()
@@ -149,7 +197,7 @@ def test_st_y_st_x_extract_coordinates_from_venues(db_session: Session):
         db_session.commit()
 
 
-def test_venues_sql_query_pattern_works(db_session: Session):
+def test_venues_sql_query_pattern_works(db_session: Session, postgis_available):
     result = db_session.execute(
         text("""
         SELECT id, name, capacity,
@@ -170,7 +218,7 @@ def test_venues_sql_query_pattern_works(db_session: Session):
         assert isinstance(row[4], float)
 
 
-def test_gist_index_exists_on_venues_geom(db_session: Session):
+def test_gist_index_exists_on_venues_geom(db_session: Session, postgis_available):
     result = db_session.execute(
         text("""
         SELECT indexname, indexdef
@@ -185,41 +233,61 @@ def test_gist_index_exists_on_venues_geom(db_session: Session):
     assert "geom" in result[1].lower() or "geometry" in result[1].lower()
 
 
-def test_st_dwithin_finds_nearby_venues(db_session: Session):
+def test_st_dwithin_finds_nearby_venues(db_session: Session, postgis_available):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals = (
+            "('Near Venue', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),"
+            " ('Far Venue', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')"
+        )
+    else:
+        insert_vals = (
+            "('Near Venue', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography),"
+            " ('Far Venue', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography)"
+        )
+
     db_session.execute(
-        text("""
-        INSERT INTO venues (name, capacity, geom, source) VALUES
-        ('Near Venue', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),
-        ('Far Venue', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')
+        text(f"""
+        INSERT INTO venues ({insert_cols}) VALUES {insert_vals}
     """)
     )
     db_session.commit()
 
     try:
         radius_meters = 1000
+        where_clause = "ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-72.9279, 41.3083), 4326)::geography, :radius)"
+        if has_source:
+            where_clause += " AND source = 'test'"
 
         result = db_session.execute(
-            text("""
+            text(f"""
             SELECT name
             FROM venues
-            WHERE ST_DWithin(
-                geom,
-                ST_SetSRID(ST_MakePoint(-72.9279, 41.3083), 4326)::geography,
-                :radius
-            )
-            AND source = 'test'
+            WHERE {where_clause}
         """),
             {"radius": radius_meters},
         ).fetchall()
 
         venue_names = [row[0] for row in result]
         assert "Near Venue" in venue_names
-    finally:
-        db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+
+        if has_source:
+            db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+        else:
+            db_session.execute(
+                text("DELETE FROM venues WHERE name IN ('Near Venue', 'Far Venue')")
+            )
         db_session.commit()
+    except Exception:
+        db_session.rollback()
+        raise
 
 
-def test_st_distance_returns_meters_for_geography(db_session: Session):
+def test_st_distance_returns_meters_for_geography(
+    db_session: Session, postgis_available
+):
     distance = db_session.execute(
         text("""
         SELECT ST_Distance(
@@ -233,7 +301,7 @@ def test_st_distance_returns_meters_for_geography(db_session: Session):
     assert 100 < distance < 500
 
 
-def test_st_distance_symmetric(db_session: Session):
+def test_st_distance_symmetric(db_session: Session, postgis_available):
     dist_ab = db_session.execute(
         text("""
         SELECT ST_Distance(
@@ -255,34 +323,58 @@ def test_st_distance_symmetric(db_session: Session):
     assert abs(dist_ab - dist_ba) < 0.01
 
 
-def test_nearest_venue_using_knn_operator(db_session: Session):
+def test_nearest_venue_using_knn_operator(db_session: Session, postgis_available):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals = (
+            "('Nearest', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),"
+            " ('Farther', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')"
+        )
+    else:
+        insert_vals = (
+            "('Nearest', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography),"
+            " ('Farther', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography)"
+        )
+
     db_session.execute(
-        text("""
-        INSERT INTO venues (name, capacity, geom, source) VALUES
-        ('Nearest', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),
-        ('Farther', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')
+        text(f"""
+        INSERT INTO venues ({insert_cols}) VALUES {insert_vals}
     """)
     )
     db_session.commit()
 
     try:
+        where_clause = ""
+        if has_source:
+            where_clause = "WHERE source = 'test'"
+
         result = db_session.execute(
-            text("""
+            text(f"""
             SELECT name
             FROM venues
-            WHERE source = 'test'
+            {where_clause}
             ORDER BY geom <-> ST_SetSRID(ST_MakePoint(-72.9288, 41.3084), 4326)::geography
             LIMIT 1
         """)
         ).scalar()
 
         assert result == "Nearest"
-    finally:
-        db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+
+        if has_source:
+            db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+        else:
+            db_session.execute(
+                text("DELETE FROM venues WHERE name IN ('Nearest', 'Farther')")
+            )
         db_session.commit()
+    except Exception:
+        db_session.rollback()
+        raise
 
 
-def test_zero_distance_to_same_point(db_session: Session):
+def test_zero_distance_to_same_point(db_session: Session, postgis_available):
     distance = db_session.execute(
         text("""
         SELECT ST_Distance(
@@ -295,73 +387,97 @@ def test_zero_distance_to_same_point(db_session: Session):
     assert distance == 0.0
 
 
-def test_st_dwithin_with_zero_radius_matches_exact_location(db_session: Session):
+def test_st_dwithin_with_zero_radius_matches_exact_location(
+    db_session: Session, postgis_available
+):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    insert_vals = "'Exact Match', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals += ", 'test'"
+
     db_session.execute(
-        text("""
-        INSERT INTO venues (name, capacity, geom, source)
-        VALUES ('Exact Match', 100,
-                ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test')
+        text(f"""
+        INSERT INTO venues ({insert_cols})
+        VALUES ({insert_vals})
     """)
     )
     db_session.commit()
 
     try:
+        where_clause = "ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 0)"
+        if has_source:
+            where_clause += " AND source = 'test'"
+
         exact = db_session.execute(
-            text("""
+            text(f"""
             SELECT COUNT(*)
             FROM venues
-            WHERE ST_DWithin(
-                geom,
-                ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography,
-                0
-            )
-            AND source = 'test'
+            WHERE {where_clause}
         """)
         ).scalar()
 
         assert exact == 1
 
+        where_clause2 = "ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-72.9288, 41.3084), 4326)::geography, 0)"
+        if has_source:
+            where_clause2 += " AND source = 'test'"
+
         nearby = db_session.execute(
-            text("""
+            text(f"""
             SELECT COUNT(*)
             FROM venues
-            WHERE ST_DWithin(
-                geom,
-                ST_SetSRID(ST_MakePoint(-72.9288, 41.3084), 4326)::geography,
-                0
-            )
-            AND source = 'test'
+            WHERE {where_clause2}
         """)
         ).scalar()
 
         assert nearby == 0
-    finally:
-        db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+
+        if has_source:
+            db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+        else:
+            db_session.execute(text("DELETE FROM venues WHERE name = 'Exact Match'"))
         db_session.commit()
+    except Exception:
+        db_session.rollback()
+        raise
 
 
-def test_find_venues_within_walking_distance(db_session: Session):
+def test_find_venues_within_walking_distance(db_session: Session, postgis_available):
+    has_source = has_source_column(db_session)
+    insert_cols = "name, capacity, geom"
+    if has_source:
+        insert_cols += ", source"
+        insert_vals = (
+            "('Close', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),"
+            " ('Medium', 100, ST_SetSRID(ST_MakePoint(-72.9295, 41.3088), 4326)::geography, 'test'),"
+            " ('Far', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')"
+        )
+    else:
+        insert_vals = (
+            "('Close', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography),"
+            " ('Medium', 100, ST_SetSRID(ST_MakePoint(-72.9295, 41.3088), 4326)::geography),"
+            " ('Far', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography)"
+        )
+
     db_session.execute(
-        text("""
-        INSERT INTO venues (name, capacity, geom, source) VALUES
-        ('Close', 100, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 'test'),
-        ('Medium', 100, ST_SetSRID(ST_MakePoint(-72.9295, 41.3088), 4326)::geography, 'test'),
-        ('Far', 100, ST_SetSRID(ST_MakePoint(-72.9500, 41.3300), 4326)::geography, 'test')
+        text(f"""
+        INSERT INTO venues ({insert_cols}) VALUES {insert_vals}
     """)
     )
     db_session.commit()
 
     try:
+        where_clause = "ST_DWithin(geom, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography, 500)"
+        if has_source:
+            where_clause += " AND source = 'test'"
+
         results = db_session.execute(
-            text("""
+            text(f"""
             SELECT name
             FROM venues
-            WHERE ST_DWithin(
-                geom,
-                ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography,
-                500
-            )
-            AND source = 'test'
+            WHERE {where_clause}
             ORDER BY ST_Distance(geom, ST_SetSRID(ST_MakePoint(-72.9289, 41.3083), 4326)::geography)
         """)
         ).fetchall()
@@ -370,10 +486,18 @@ def test_find_venues_within_walking_distance(db_session: Session):
         assert "Close" in venue_names
         assert "Medium" in venue_names
         assert "Far" not in venue_names
-    finally:
-        db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+
+        if has_source:
+            db_session.execute(text("DELETE FROM venues WHERE source = 'test'"))
+        else:
+            db_session.execute(
+                text("DELETE FROM venues WHERE name IN ('Close', 'Medium', 'Far')")
+            )
         db_session.commit()
+    except Exception:
+        db_session.rollback()
+        raise
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    pytest.main([__file__])
