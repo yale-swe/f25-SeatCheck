@@ -145,3 +145,30 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 - Keeps high-level docs accessible for new contributors.
 
 ---
+
+## Testing Coverage
+
+### Backend Testing
+
+**Current Statement Coverage: xx%**
+
+#### Test Suites
+
+- **`test_schema.py`** (31 unit tests) - Validates SQLAlchemy model definitions (table structure, columns, constraints, relationships, indexes). No database connection required.
+
+- **`test_postgis.py`** (15 integration tests) - Tests PostGIS spatial functionality (extension, GEOGRAPHY columns, spatial queries, GIST indexes). Requires Docker database.
+
+- **`test_health.py`** - API health check endpoints (in progress)
+
+- **`test_checkin.py`** - Check-in API endpoints (in progress)
+
+- **`test_auth_dev.py`** - Development authentication flow (in progress)
+
+#### Running Tests
+
+```bash
+cd backend
+pytest tests/ --cov=src/app --cov-report=term
+```
+
+---
