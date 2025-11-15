@@ -125,9 +125,9 @@ jobs:
         working-directory: backend
         run: uv sync
 
-      - name: Run backend tests
+      - name: Run backend tests with coverage
         working-directory: backend
-        run: uv run pytest -v
+        run: uv run pytest --cov=app --cov-report=xml --cov-report=term-missing
 
   # ----------------------------
   # 3. Frontend Tests (Node.js)
@@ -156,4 +156,4 @@ jobs:
         env:
           # So frontend code builds/tests against the same base as dev
           EXPO_PUBLIC_API_BASE: "http://localhost:8000"
-        run: npm test -- --run
+        run: npm test -- --coverage --watchAll=false
