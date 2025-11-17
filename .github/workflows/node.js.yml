@@ -157,4 +157,4 @@ jobs:
         env:
           # So frontend code builds/tests against the same base as dev
           EXPO_PUBLIC_API_BASE: "http://localhost:8000"
-        run: vitest --coverage --run
+        run: npm test -- --run
