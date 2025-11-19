@@ -1,0 +1,16 @@
+{
+  // treat backend/src as the package root ("app" lives here)
+  "include": ["src"],
+  "extraPaths": ["src"],
+
+  // keep type-checking quiet while you build
+  "typeCheckingMode": "off",
+  "reportMissingImports": "none",
+
+  // optional: stop pyright crawling junk
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "alembic/versions/*.pyc"
+  ]
+}

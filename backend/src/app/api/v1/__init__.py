@@ -1,11 +1,15 @@
-"""API v1 routes."""
-
 from fastapi import APIRouter
-from app.api.v1 import checkins, venues, health
+from . import health, venues, ratings, checkins
 
 api_router = APIRouter()
 
-# Include all route modules
 api_router.include_router(health.router, tags=["health"])
-api_router.include_router(checkins.router, prefix="/checkins", tags=["checkins"])
-api_router.include_router(venues.router, prefix="/venues", tags=["venues"])
+api_router.include_router(
+    venues.router, prefix="/venues", tags=["venues"]
+)  # → /api/v1/venues
+api_router.include_router(
+    ratings.router, prefix="/ratings", tags=["ratings"]
+)  # → /api/v1/ratings
+api_router.include_router(
+    checkins.router, prefix="/checkins", tags=["checkins"]
+)  # → /api/v1/checkins

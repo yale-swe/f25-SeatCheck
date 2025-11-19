@@ -1,185 +1,150 @@
-"""Venue endpoints for location data and heatmaps."""
+# backend/src/app/api/v1/venues.py
+"""Venue endpoints for location data and heatmaps with image_url support."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from __future__ import annotations
+
+from pathlib import Path
+import re
+from typing import Dict, List
+
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
-from app.models import Venue
-from app.schemas.location import Venue as VenueResponse
-from app.schemas.venue import VenueStatus
-from app.services.metrics import compute_venue_metrics
 
 router = APIRouter()
 
+# ---------- image URL helper ----------
 
-@router.get("", response_model=list[VenueResponse])
-def list_venues(db: Session = Depends(get_db)) -> list[VenueResponse]:
-    """List all venues with computed availability scores.
+# __file__ = .../backend/src/app/api/v1/venues.py
+# parents[0]=v1, [1]=api, [2]=app, [3]=src, [4]=backend  -> backend/static
+STATIC_DIR = Path(__file__).resolve().parents[4] / "static"
+VENUE_IMG_DIR = STATIC_DIR / "venues"
+IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
-    Returns all venues with their current availability based on recent check-ins
-    using time-decayed aggregation.
+_slug_re = re.compile(r"[^a-z0-9]+")
 
-    Args:
-        db: Database session
 
-    Returns:
-        List of venues with availability scores
+def slugify_name(name: str) -> str:
+    """'Bass Library' -> 'bass_library', 'TSAI City' -> 'tsai_city', 'SML' -> 'sml'."""
+    s = name.strip().lower()
+    s = _slug_re.sub("_", s).strip("_")
+    return s
+
+
+def image_url_for_name(request: Request, name: str) -> str | None:
     """
-    venues = db.query(Venue).all()
+    Look in backend/static/venues for a filename whose stem matches the slug.
+    If found, return an absolute URL based on request.base_url (auto-correct host/port).
+    """
+    if not VENUE_IMG_DIR.exists():
+        return None
 
-    result = []
-    for venue in venues:
-        metrics = compute_venue_metrics(venue.id, db)
-        result.append(
-            VenueResponse(
-                id=venue.id,
-                name=venue.name,
-                lat=venue.lat,
-                lon=venue.lon,
-                availability=metrics["availability"],
-            )
+    slug = slugify_name(name)
+
+    try:
+        # Build a case-insensitive stem->filename map once per call
+        candidates = {
+            p.stem.lower(): p.name
+            for p in VENUE_IMG_DIR.iterdir()
+            if p.is_file() and p.suffix.lower() in IMG_EXTS
+        }
+    except FileNotFoundError:
+        return None
+
+    fname = candidates.get(slug)
+    if not fname:
+        return None
+
+    base = str(request.base_url).rstrip("/")  # e.g., http://127.0.0.1:8000
+    return f"{base}/static/venues/{fname}"
+
+
+# ---------- data SQL (live occupancy + recent rating aggregates) ----------
+
+OCC_SQL = text(
+    """
+WITH live AS (
+  SELECT venue_id, COUNT(*) AS occupancy
+  FROM checkins
+  WHERE checkout_at IS NULL
+    AND now() - last_seen_at <= interval '2 hours'
+  GROUP BY venue_id
+),
+agg AS (
+  SELECT venue_id,
+         AVG(occupancy)::float AS avg_occupancy,
+         AVG(noise)::float     AS avg_noise,
+         COUNT(*)::int         AS rating_count
+  FROM ratings
+  WHERE created_at >= now() - interval '2 hours'
+  GROUP BY venue_id
+)
+SELECT v.id, v.name, v.capacity,
+       ST_Y(v.geom::geometry) AS lat,
+       ST_X(v.geom::geometry) AS lon,
+       COALESCE(live.occupancy, 0)      AS occupancy,
+       COALESCE(agg.avg_occupancy, 0.0) AS avg_occupancy,
+       COALESCE(agg.avg_noise, 0.0)     AS avg_noise,
+       COALESCE(agg.rating_count, 0)    AS rating_count
+FROM venues v
+LEFT JOIN live ON live.venue_id = v.id
+LEFT JOIN agg  ON agg.venue_id  = v.id
+ORDER BY v.name
+"""
+)
+
+
+@router.get("")
+def list_venues(request: Request, db: Session = Depends(get_db)):
+    rows = db.execute(OCC_SQL).mappings().all()
+    out: List[Dict[str, object]] = []
+    for r in rows:
+        capacity = r["capacity"]
+        occ = int(r["occupancy"] or 0)
+        ratio = (occ / capacity) if capacity else 0.0
+        out.append(
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "capacity": capacity,
+                "occupancy": occ,
+                "ratio": ratio,
+                "avg_occupancy": r["avg_occupancy"],
+                "avg_noise": r["avg_noise"],
+                "rating_count": r["rating_count"],
+                "image_url": image_url_for_name(request, r["name"]),
+            }
         )
-
-    return result
-
-
-@router.get("/{venue_id}/status", response_model=VenueStatus)
-def get_venue_status(venue_id: int, db: Session = Depends(get_db)) -> VenueStatus:
-    """Get current status and availability metrics for a specific venue.
-
-    Returns time-decayed averages of occupancy, noise, and computed availability score.
-    This endpoint is useful for detailed heatmap data and real-time status updates.
-
-    Args:
-        venue_id: ID of the venue
-        db: Database session
-
-    Returns:
-        Detailed venue status with heatmap metrics
-
-    Raises:
-        HTTPException: 404 if venue not found
-    """
-    # Verify venue exists
-    venue = db.query(Venue).filter(Venue.id == venue_id).first()
-    if not venue:
-        raise HTTPException(status_code=404, detail=f"Venue {venue_id} not found")
-
-    # Compute metrics
-    metrics = compute_venue_metrics(venue_id, db)
-
-    return VenueStatus(
-        venue_id=venue_id,
-        venue_name=venue.name,
-        availability=metrics["availability"],
-        avg_occupancy=metrics["avg_occupancy"],
-        avg_noise=metrics["avg_noise"],
-        recent_checkins_count=metrics["recent_count"],
-        last_updated=metrics["last_updated"],
-    )
+    return out
 
 
-@router.get(".geojson")
-def venues_geojson(db: Session = Depends(get_db)) -> JSONResponse:
-    """Get all venues as a GeoJSON FeatureCollection.
-
-    Useful for mapping applications and geospatial visualization.
-    Includes availability, occupancy, and noise metrics for each venue.
-
-    Args:
-        db: Database session
-
-    Returns:
-        GeoJSON FeatureCollection with venue data
-    """
-    venues = db.query(Venue).all()
-
-    features = []
-    for venue in venues:
-        metrics = compute_venue_metrics(venue.id, db)
+@router.get("/.geojson")
+def venues_geojson(request: Request, db: Session = Depends(get_db)):
+    rows = db.execute(OCC_SQL).mappings().all()
+    features: List[Dict[str, object]] = []
+    for r in rows:
+        capacity = r["capacity"]
+        occ = int(r["occupancy"] or 0)
+        ratio = (occ / capacity) if capacity else 0.0
         features.append(
             {
                 "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [venue.lon, venue.lat]},
+                "geometry": {"type": "Point", "coordinates": [r["lon"], r["lat"]]},
                 "properties": {
-                    "id": venue.id,
-                    "name": venue.name,
-                    "availability": metrics["availability"],
-                    "avg_occupancy": metrics["avg_occupancy"],
-                    "avg_noise": metrics["avg_noise"],
+                    "id": r["id"],
+                    "name": r["name"],
+                    "capacity": capacity,
+                    "occupancy": occ,
+                    "ratio": ratio,
+                    "avg_occupancy": r["avg_occupancy"],
+                    "avg_noise": r["avg_noise"],
+                    "rating_count": r["rating_count"],
+                    "image_url": image_url_for_name(request, r["name"]),
                 },
             }
         )
-
-    return JSONResponse({"type": "FeatureCollection", "features": features})
-
-
-@router.get("/map", response_class=HTMLResponse)
-def web_map() -> HTMLResponse:
-    """Simple desktop map viewer using Leaflet.js.
-
-    Provides an interactive web-based map showing all venues with color-coded
-    availability markers:
-    - Green (>66%): High availability
-    - Yellow (33-66%): Moderate availability
-    - Red (<33%): Low availability
-
-    Returns:
-        HTML page with interactive map
-    """
-    html = """
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>SeatCheck Map (Desktop MVP)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <style>html, body, #map { height: 100%; margin: 0; }</style>
-</head>
-<body>
-  <div id="map"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""></script>
-  <script>
-    const YALE = [41.3083, -72.9279];
-    const map = L.map('map').setView(YALE, 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    fetch('/venues.geojson')
-      .then(r => r.json())
-      .then(fc => {
-        fc.features.forEach(f => {
-          const [lon, lat] = f.geometry.coordinates;
-          const name = f.properties.name;
-          const avail = f.properties.availability ?? 0.5;
-          // simple availability-to-color (more available = greener)
-          const color = avail >= 0.66 ? '#2ecc71' : (avail >= 0.33 ? '#f1c40f' : '#e74c3c');
-
-          L.circleMarker([lat, lon], {
-            radius: 10,
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.7,
-            weight: 2
-          })
-          .bindPopup(`<b>${name}</b><br/>Availability: ${(avail*100)|0}%`)
-          .addTo(map);
-        });
-      })
-      .catch(err => console.error('Failed to load venues:', err));
-  </script>
-</body>
-</html>
-"""
-    return HTMLResponse(html)
+    return {"type": "FeatureCollection", "features": features}

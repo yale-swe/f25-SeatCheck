@@ -1,19 +1,18 @@
 // seat-check/components/MapView.native.tsx
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ActivityIndicator, Pressable } from "react-native";
+import { View, Text, ActivityIndicator, Pressable, Platform } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import * as Linking from "expo-linking";
-
-const API = process.env.EXPO_PUBLIC_API_BASE ?? "http://localhost:8000";
+import { API } from "@/constants/api";
 
 type Venue = {
   id: number;
   name: string;
   lat: number;
   lon: number;
-  capacity: number;
-  occupancy: number;
-  ratio: number;
+  capacity: number | null;
+  occupancy: number | null;
+  ratio: number | null;
 };
 
 function colorFor(ratio: number) {
@@ -33,17 +32,18 @@ export default function MapViewNative() {
     setLoading(true);
     setUnauthorized(false);
     try {
-      const res = await fetch(`${API}/venues/with_occupancy`, {
-        // RN fetch doesn’t truly support cookies like the browser.
-        // This is here for future compatibility once we add token auth.
+      const res = await fetch(API.venues, {
+        // RN fetch doesn't persist browser cookies; this is here for future token auth.
         credentials: "include" as RequestCredentials,
       });
       if (res.status === 401) {
         setUnauthorized(true);
         setVenues([]);
-      } else {
+      } else if (res.ok) {
         const data: Venue[] = await res.json();
         setVenues(data);
+      } else {
+        setVenues([]);
       }
     } catch {
       setVenues([]);
@@ -58,27 +58,30 @@ export default function MapViewNative() {
     return () => clearInterval(id);
   }, [fetchVenues]);
 
-  const checkIn = useCallback(async (venueId: number) => {
-    try {
-      const res = await fetch(`${API}/checkins`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include" as RequestCredentials,
-        body: JSON.stringify({ venue_id: venueId }),
-      });
-      if (res.status === 401) {
-        setUnauthorized(true);
-        return;
+  const checkIn = useCallback(
+    async (venueId: number) => {
+      try {
+        const res = await fetch(API.checkins, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include" as RequestCredentials,
+          body: JSON.stringify({ venue_id: venueId }),
+        });
+        if (res.status === 401) {
+          setUnauthorized(true);
+          return;
+        }
+        await fetchVenues();
+      } catch {
+        // noop; could add a toast here
       }
-      await fetchVenues();
-    } catch {
-      // swallow for now; you could show a toast here
-    }
-  }, [fetchVenues]);
+    },
+    [fetchVenues]
+  );
 
-  // Temporary helper: open dev login in system browser (cookie session is browser-only)
   const openDevLogin = useCallback(async () => {
-    await Linking.openURL(`${API}/auth/dev/login?netid=dev001`);
+    // On native, open dev login in the system browser so the server session cookie is set there.
+    await Linking.openURL(`${process.env.EXPO_PUBLIC_API_BASE ?? "http://127.0.0.1:8000"}/auth/dev/login?netid=dev001`);
   }, []);
 
   if (loading && !venues) {
@@ -93,7 +96,7 @@ export default function MapViewNative() {
     return (
       <View style={{ flex: 1, padding: 16, gap: 12, alignItems: "center", justifyContent: "center" }}>
         <Text style={{ textAlign: "center", fontSize: 16 }}>
-          You’re not authenticated. On mobile, cookie sessions don’t carry over by default.
+          You’re not authenticated. On native, cookie sessions don’t carry over by default.
         </Text>
         <Pressable
           onPress={openDevLogin}
@@ -127,17 +130,19 @@ export default function MapViewNative() {
       provider={PROVIDER_GOOGLE}
       initialRegion={initialRegion}
     >
-      {(venues ?? []).map((v) => (
-        <Marker
-          key={v.id}
-          coordinate={{ latitude: v.lat, longitude: v.lon }}
-          title={v.name}
-          description={`${v.occupancy}/${v.capacity} occupied (${Math.round((v.ratio || 0) * 100)}%)`}
-          pinColor={colorFor(v.ratio || 0)}
-          // Pressing the callout triggers a check-in (temporary, can swap for a custom callout)
-          onCalloutPress={() => checkIn(v.id)}
-        />
-      ))}
+      {(venues ?? []).map((v) => {
+        const ratio = typeof v.ratio === "number" ? v.ratio : 0;
+        return (
+          <Marker
+            key={v.id}
+            coordinate={{ latitude: v.lat, longitude: v.lon }}
+            title={v.name}
+            description={`${v.occupancy ?? 0}/${v.capacity ?? 0} occupied (${Math.round(ratio * 100)}%)`}
+            pinColor={colorFor(ratio)}
+            onCalloutPress={() => checkIn(v.id)}
+          />
+        );
+      })}
     </MapView>
   );
 }

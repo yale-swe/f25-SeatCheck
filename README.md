@@ -125,20 +125,6 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 
 ---
 
-### 3. **Mobile Application (`f25-SeatCheck/seat-check/`)**
-
-- **Purpose**: Houses the React Native (Expo) mobile app.
-- **Key Directories**:
-  - `app/` → Screens, layouts, navigation
-  - `components/` → Reusable UI blocks
-  - `constants/` → Centralized configs (themes, etc.)
-  - `hooks/` → Custom React hooks
-  - `assets/` → Images and static resources
-  - `scripts/` → Dev utilities
-- Follows React Native conventions; separates presentation, logic, and configs.
-
----
-
 ### 4. **Root (`README.md`)**
 
 - Provides project overview + onboarding instructions.

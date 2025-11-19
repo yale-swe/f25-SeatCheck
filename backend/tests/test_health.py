@@ -11,5 +11,5 @@ def test_list_venues(client):
         "/auth/dev/login", params={"netid": "testuser"}, follow_redirects=False
     )
     assert r.status_code in (200, 302)
-    r2 = client.get("/venues/with_occupancy")
+    r2 = client.get("/api/v1/venues")
     assert r2.status_code == 200

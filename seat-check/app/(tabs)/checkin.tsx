@@ -1,5 +1,5 @@
 // app/(tabs)/checkin.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@/theme/useTheme';
-
-const API = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000';
+import { API, fetchJSON } from '@/constants/api';
 
 type NoiseLevel = 'silent' | 'quiet' | 'moderate' | 'loud';
+const noiseMap: Record<NoiseLevel, number> = { silent: 0, quiet: 2, moderate: 3, loud: 5 };
 
 type Venue = {
   id: number;
   name: string;
   lat: number;
-  lng: number;
-  capacity?: number | null;
-  occupancy?: number | null;
+  lon: number; // backend uses 'lon'
+  capacity: number | null;
+  occupancy: number | null; // live presence (active check-ins)
 };
 
 export default function CheckInScreen() {
@@ -35,50 +35,73 @@ export default function CheckInScreen() {
   const [noise, setNoise] = useState<NoiseLevel>('moderate');
   const [busy, setBusy] = useState(false);
 
+  const loadVenues = useCallback(async () => {
+    try {
+      const raw = await fetchJSON<any[]>(API.venues);
+      const mapped: Venue[] = raw.map((v) => ({
+        id: Number(v.id),
+        name: String(v.name),
+        lat: Number(v.lat ?? 0),
+        lon: Number(v.lon ?? 0),
+        capacity: v.capacity != null ? Number(v.capacity) : null,
+        occupancy: v.occupancy != null ? Number(v.occupancy) : null,
+      }));
+      setVenues(mapped);
+      if (mapped.length && selectedId == null) setSelectedId(mapped[0].id);
+    } catch (e: any) {
+      Alert.alert('Failed to load venues', String(e?.message || e));
+      setVenues([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedId]);
+
   useEffect(() => {
-    let live = true;
-    (async () => {
-      try {
-        const r = await fetch(`${API}/venues/with_occupancy`, { credentials: 'include' });
-        const raw = r.ok ? await r.json() : [];
-        const mapped: Venue[] = raw.map((v: any) => ({
-          id: v.id,
-          name: v.name,
-          lat: v.lat ?? v.latitude ?? v.geom?.lat ?? 0,
-          lng: v.lng ?? v.longitude ?? v.geom?.lng ?? 0,
-          capacity: v.capacity ?? null,
-          occupancy: v.occupancy ?? null,
-        }));
-        if (live) {
-          setVenues(mapped);
-          if (mapped.length && selectedId == null) setSelectedId(mapped[0].id);
-        }
-      } catch (e: any) {
-        if (live) Alert.alert('Failed to load venues', String(e?.message || e));
-      } finally {
-        if (live) setLoading(false);
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
+    loadVenues();
+  }, [loadVenues]);
 
   const submit = async () => {
-    if (!selectedId) return Alert.alert('Pick a location', 'Please choose where you are.');
+    if (!selectedId) {
+      return Alert.alert('Pick a location', 'Please choose where you are.');
+    }
     try {
       setBusy(true);
-      await fetch(`${API}/checkins`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          venue_id: selectedId,
-          occupancy_level: occupancy, // optional hints to backend
-          noise_level: noise,
-        }),
-      });
-      Alert.alert('Thanks!', 'Your check-in was submitted.');
+
+      // 1) Presence check-in (updates live occupancy)
+      {
+        const r = await fetch(API.checkins, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ venue_id: selectedId }),
+        });
+        if (!r.ok) {
+          const t = await r.text();
+          throw new Error(`Presence check-in failed: ${r.status} ${r.statusText}\n${t}`);
+        }
+      }
+
+      // 2) Rating submit (updates averages)
+      {
+        const r2 = await fetch(API.ratings, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            venue_id: selectedId,
+            occupancy,              // 0–5 scale for perceived crowding
+            noise: noiseMap[noise], // 0–5 scale
+          }),
+        });
+        if (!r2.ok) {
+          const t = await r2.text();
+          throw new Error(`Rating submit failed: ${r2.status} ${r2.statusText}\n${t}`);
+        }
+      }
+
+      // 3) Refresh local list so UI reflects new values
+      await loadVenues();
+      Alert.alert('Thanks!', 'Your check-in and rating were submitted.');
     } catch (e: any) {
       Alert.alert('Submit failed', String(e?.message || e));
     } finally {
@@ -97,7 +120,7 @@ export default function CheckInScreen() {
 
   return (
     <ScrollView style={[s.page, { backgroundColor: colors.bg }]} contentContainerStyle={{ padding: 16, gap: 16 }}>
-      {/* Section: Location */}
+      {/* Location */}
       <View>
         <Text style={[s.sectionTitle, { color: colors.text }]}>Location</Text>
         <View style={[s.selectBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -132,7 +155,7 @@ export default function CheckInScreen() {
         </View>
       </View>
 
-      {/* Section: Occupancy */}
+      {/* Occupancy */}
       <View>
         <Text style={[s.sectionTitle, { color: colors.text }]}>Occupancy (0–5)</Text>
         <View style={s.sliderRow}>
@@ -166,7 +189,7 @@ export default function CheckInScreen() {
         </Text>
       </View>
 
-      {/* Section: Noise */}
+      {/* Noise */}
       <View>
         <Text style={[s.sectionTitle, { color: colors.text }]}>Noise</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
