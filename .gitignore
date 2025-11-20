@@ -1,3 +1,5 @@
 node_modules
 .env
 seat-check/.env
+.mypy_cache/
+.ruff_cache/

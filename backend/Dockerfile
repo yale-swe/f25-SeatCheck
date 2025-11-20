@@ -11,12 +11,16 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen
+# Only copy pyproject.toml (no uv.lock yet)
+COPY pyproject.toml ./
+
+# Create the virtualenv + install deps based on pyproject.toml
+RUN uv sync
 
 # "source" venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
+# Now copy the rest of the backend code
 COPY . .
 
 EXPOSE 8000
