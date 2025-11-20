@@ -1,6 +1,7 @@
 name: CI Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
   pull_request:
@@ -125,9 +126,9 @@ jobs:
         working-directory: backend
         run: uv sync
 
-      - name: Run backend tests
+      - name: Run backend tests with coverage
         working-directory: backend
-        run: uv run pytest -v
+        run: uv run pytest --cov=app --cov-report=xml --cov-report=term-missing
 
   # ----------------------------
   # 3. Frontend Tests (Node.js)

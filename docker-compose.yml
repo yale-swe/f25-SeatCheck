@@ -1,0 +1,68 @@
+services:
+  # PostgreSQL database with PostGIS extension
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: seatcheck-db
+    environment:
+      POSTGRES_DB: seatcheck
+      POSTGRES_USER: seatcheck
+      POSTGRES_PASSWORD: seatcheck
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seatcheck -d seatcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: seatcheck-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg2://seatcheck:seatcheck@db:5432/seatcheck
+      APP_BASE: http://localhost:8081
+      DEV_AUTH: "1"
+      PYTHONPATH: /app/src
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      bash -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 2 &&
+        echo 'Running database seed...' &&
+        uv run python scripts/seed_db.py &&
+        echo 'Starting FastAPI server...' &&
+        uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Expo/React Native frontend (web)
+  frontend:
+    build:
+      context: ./seat-check
+      dockerfile: Dockerfile
+    container_name: seatcheck-frontend
+    environment:
+      EXPO_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "8081:8081"
+    depends_on:
+      - backend
+    volumes:
+      - ./seat-check:/app
+      - /app/node_modules
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:

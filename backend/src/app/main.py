@@ -4,7 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -33,13 +34,38 @@ app = FastAPI(
     version=settings.app_version,
     debug=settings.debug,
 )
+from app.db import SessionLocal
+
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv(filename=".env"))
+
+# -----------------------------------------------------------------------------
+# App setup
+# -----------------------------------------------------------------------------
+app = FastAPI(title="SeatCheck API", version="0.1.0")
+
+# ---- Frontend base ----------------------------------------------------------
+APP_BASE = os.getenv("APP_BASE", "http://localhost:8081")
+
+# ---- CORS -------------------------------------------------------------------
+default_origins = [
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:19006",
+]
+extra_origins = (
+    os.getenv("DEV_ORIGINS", "").split(",") if os.getenv("DEV_ORIGINS") else []
+)
+DEV_ORIGINS = list(set(default_origins + extra_origins))
 
 # --- Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
