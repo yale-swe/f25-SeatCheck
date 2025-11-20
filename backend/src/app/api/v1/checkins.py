@@ -1,70 +1,71 @@
-"""Check-in endpoints for venue reporting."""
-
-from fastapi import APIRouter, Depends, HTTPException
+# backend/src/app/api/v1/checkins.py
+from __future__ import annotations
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-from app.api.deps import get_db
-from app.models import User, Venue, CheckIn
-from app.schemas.checkin import CheckInRequest, CheckInResponse
+from app.api.deps import get_db, require_login
 
 router = APIRouter()
 
 
-@router.post("", response_model=CheckInResponse, status_code=201)
+class CheckInIn(BaseModel):
+    venue_id: int
+
+
+class CheckInOut(BaseModel):
+    venue_id: int
+    active: bool
+
+
+@router.post("", response_model=CheckInOut)
 def create_checkin(
-    checkin: CheckInRequest, db: Session = Depends(get_db)
-) -> CheckInResponse:
-    """Create a new check-in report for a venue.
-
-    Records occupancy and noise levels at a specific venue.
-    User ID is optional for MVP (will be required when auth is implemented).
-
-    Args:
-        checkin: Check-in data (venue_id, occupancy, noise, optional user_id)
-        db: Database session
-
-    Returns:
-        Confirmation with check-in ID
-
-    Raises:
-        HTTPException: 404 if venue not found
-    """
-    # Verify venue exists
-    venue = db.query(Venue).filter(Venue.id == checkin.venue_id).first()
-    if not venue:
-        raise HTTPException(
-            status_code=404, detail=f"Venue {checkin.venue_id} not found"
-        )
-
-    # For MVP: create a default user if user_id not provided
-    user_id = checkin.user_id
-    if user_id is None:
-        # Get or create anonymous user
-        anonymous_user = db.query(User).filter(User.netid == "anonymous").first()
-
-        if not anonymous_user:
-            anonymous_user = User(
-                netid="anonymous",
-                display_name="Anonymous User",
-                anonymize_checkins=True,
-            )
-            db.add(anonymous_user)
-            db.commit()
-            db.refresh(anonymous_user)
-
-        user_id = anonymous_user.id
-
-    # Create check-in
-    db_checkin = CheckIn(
-        venue_id=checkin.venue_id,
-        user_id=user_id,
-        occupancy=checkin.occupancy,
-        noise=checkin.noise,
-        anonymous=True,  # Default to anonymous for now
+    payload: CheckInIn,
+    netid: str = Depends(require_login),
+    db: Session = Depends(get_db),
+):
+    # end any existing active checkin
+    db.execute(
+        text(
+            "UPDATE checkins SET checkout_at = now() WHERE netid = :netid AND checkout_at IS NULL"
+        ),
+        {"netid": netid},
     )
-
-    db.add(db_checkin)
+    # insert and mark last_seen_at now so it counts immediately
+    db.execute(
+        text("""
+            INSERT INTO checkins (netid, venue_id, last_seen_at)
+            VALUES (:netid, :venue_id, now())
+        """),
+        {"netid": netid, "venue_id": payload.venue_id},
+    )
     db.commit()
-    db.refresh(db_checkin)
+    return CheckInOut(venue_id=int(payload.venue_id), active=True)
 
-    return CheckInResponse(ok=True, checkin_id=db_checkin.id)
+
+@router.post("/heartbeat", response_model=CheckInOut)
+def heartbeat(netid: str = Depends(require_login), db: Session = Depends(get_db)):
+    row = db.execute(
+        text("""
+        UPDATE checkins SET last_seen_at = now()
+        WHERE netid = :netid AND checkout_at IS NULL
+        RETURNING venue_id
+    """),
+        {"netid": netid},
+    ).fetchone()
+    db.commit()
+    return CheckInOut(venue_id=(int(row.venue_id) if row else -1), active=bool(row))
+
+
+@router.post("/checkout", response_model=CheckInOut)
+def checkout(netid: str = Depends(require_login), db: Session = Depends(get_db)):
+    row = db.execute(
+        text("""
+        UPDATE checkins SET checkout_at = now()
+        WHERE netid = :netid AND checkout_at IS NULL
+        RETURNING venue_id
+    """),
+        {"netid": netid},
+    ).fetchone()
+    db.commit()
+    return CheckInOut(venue_id=(int(row.venue_id) if row else -1), active=False)

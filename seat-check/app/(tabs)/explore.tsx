@@ -9,7 +9,6 @@ import { useTheme } from '@/theme/useTheme';
 
 const API = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000';
 const ThemedView = View;
-const ThemedText = Text as any;
 
 const webSelectStyle: React.CSSProperties = {
   width: '100%',
@@ -63,27 +62,28 @@ export default function ExploreScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${API}/venues/with_occupancy`, { credentials: 'include' });
+        const r = await fetch(`${API}/api/v1/venues`, { credentials: 'include' });
         if (!r.ok) return;
         const data = await r.json();
         const mapped: Venue[] = data.map((v: any) => ({
           id: v.id,
           name: v.name,
           capacity: v.capacity ?? 0,
-          lat: v.lat ?? v.latitude ?? v.geom?.lat ?? 0,
-          lng: v.lng ?? v.longitude ?? v.geom?.lng ?? 0,
+          lat: v.lat ?? 0,
+          lng: v.lon ?? 0,                 // <-- backend uses `lon`
           occupancy: v.occupancy ?? 0,
           avg_noise: v.avg_noise ?? null,
-          avg_crowd: v.avg_crowd ?? null,
+          avg_crowd: v.avg_occupancy ?? null,
           rating_count: v.rating_count ?? 0,
-          photo_url: v.photo_url ?? null,
+          photo_url: v.image_url ?? null,  // <-- read `image_url` from API
         }));
         setVenues(mapped);
       } catch {
-        // ignore for now
+        /* ignore */
       }
     })();
   }, []);
+
 
   // Distances
   const withDistance = useMemo(() => {
@@ -137,9 +137,9 @@ export default function ExploreScreen() {
   return (
     <ThemedView style={[s.page, { backgroundColor: colors.bg }]}>
       <View style={s.header}>
-        <ThemedText type="title" style={{ fontFamily: Fonts.rounded }}>
+        <Text style={[s.sectionTitle, { color: colors.text }]}>
           Explore
-        </ThemedText>
+        </Text>
       </View>
 
       {/* Search */}
@@ -293,7 +293,7 @@ function VenueCard({
   );
 }
 
-/* ---------------- helpers ---------------- */
+/* helpers */
 
 async function checkIn(venue_id: number) {
   await fetch(`${API}/checkins`, {
@@ -341,11 +341,13 @@ function placeholderFor(name: string) {
   return `data:image/svg+xml;utf8,${svg}`;
 }
 
-/* ---------------- styles ---------------- */
+/* styles */
 
 const s = StyleSheet.create({
   page: { flex: 1, padding: 16 },
-  header: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  header: { marginBottom: 6 }, // match spacing vibe from check-in
+  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
+
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 10 },
   search: { flex: 1, height: 42, paddingHorizontal: 12, borderWidth: 1, borderRadius: 10 },
   clearBtn: {

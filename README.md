@@ -1,24 +1,24 @@
 # f25-SeatCheck
 
-**Description**: A real-time Yale campus study spot tracker built with React Native (Expo), FastAPI, and PostgreSQL.
+**Description**: A real-time Yale campus study-spot tracker built with React Native (Expo), FastAPI, PostgreSQL, and PostGIS.
 
 ---
 
 ## Project Overview
 
-SeatCheck is designed to help Yale students find the best study spots on campus—whether they’re looking for a quiet room in Sterling or a collaborative table in Bass. Inspired by a “Waze for studying,” SeatCheck uses student check-ins and campus data to generate a live heatmap of study areas, displaying occupancy, noise levels, and available amenities.
+SeatCheck helps Yale students find their ideal study spaces on campus, using real-time student check-ins, noise ratings, and aggregated analytics. Designed as a “Waze for studying,” SeatCheck provides a live map of campus study areas, showing occupancy, noise levels, and when each space was last active.
 
 ---
 
 ## Long-term Vision
 
-- Real-time study spot maps with occupancy and noise data
-- Social features like friend lists and optional location sharing
-- Gamification with badges, leaderboards, and profile customization
-- Predictive analytics to recommend the best times and locations to study
-- Real-time updates about locations
+- Real-time occupancy + noise maps
+- Optional friend lists and social location sharing
+- Leaderboards and gamified study-streak features
+- Predictive analytics for when spaces will be full
+- Real-time updates about location congestion
 
-This README documents our chosen tech stack, repo structure, setup instructions, current functionality, and future roadmap.
+This README documents the tech stack, repo structure, dev workflow, and future roadmap.
 
 ---
 
@@ -35,140 +35,104 @@ This README documents our chosen tech stack, repo structure, setup instructions,
 
 ## Tech Stack
 
-### Frontend
+### Frontend (seat-check/)
 
-- **React Native with Expo** → Cross-platform mobile interface (iOS + Android)
-- **react-native-maps + Google Maps API** → Geospatial visualization + location services
-- **TypeScript** → Type safety and maintainability
+- **React Native (Expo router)** → Cross-platform mobile interface (iOS + Android)
+- **TypeScript** → type-safe component logic
+- **react-native-maps + Google Maps SDK** → Geospatial visualization of Yale
+- Handles:
+    map display
+    check-ins / ratings UI
+    current user location (permission-based)
+    venue detail cards
 
-### Backend
 
-- **FastAPI** → Asynchronous Python web framework
-- **RESTful endpoints** for locations, check-ins, and analytics
-- Built-in interactive API docs via Swagger (`/docs`)
-- **Google Maps Web APIs proxying** for Places, Geocoding, and Directions (keys secured)
+### Backend (backend/src/app/)
+
+- **FastAPI** → high-performance async backend
+- **Alembic** → migrations for PostgreSQL/PostGIS
+- **Pydantic v2** → request/response validation
+- **Ruff** → linting + formatting
+- **mypy** (strict) → static type checking
+- **pytest** → test runner
+- **Pre-commit** → automated formatting & lint guards
+  REST endpoints include:
+    POST /api/v1/ratings – occupancy/noise rating submission
+    POST /api/v1/checkins – heartbeat, check-in, and check-out
+    GET /api/v1/venues – venue metadata + geospatial info
+    GET /api/v1/metrics – aggregated occupancy analytics
 
 ### Database
 
 - **PostgreSQL** → Relational database for structured study spot data
-- Stores locations, user check-ins, occupancy levels, and noise
+    venues, check-ins, ratings, and aggregated analytics
 - **PostGIS extension** → Enables geospatial queries (e.g., nearby locations, clustering)
 
 ### Authentication
+- **Planned: Yale CAS authentication**
 
-- **Yale CAS (Central Authentication Service)** planned for secure student logins
-- Current skeleton includes a placeholder login screen
-- Future: CAS gateway issues JWTs for authenticated API access
+- **Current backend includes:**
+- Session-based placeholder
+- Require_login dependency
 
 ### Real-Time Updates
 
-- **WebSockets (FastAPI)** → Broadcasts new check-ins and updates to all clients
-- Powers live occupancy heatmaps
+- **WebSockets** → Broadcasts new check-ins and updates to all clients
 
 ---
 
-## Repository Structure
+## General Repository Structure
 
 ---
 
-### 1. **Backend (`backend/`)**
+f25-SeatCheck/
+├── backend/
+│   ├── alembic/              # Migration environment + versions
+│   ├── src/
+│   │   └── app/
+│   │       ├── api/
+│   │       │   └── v1/
+│   │       ├── models/       # SQLAlchemy ORM models
+│   │       ├── services/     # Metrics + business logic
+│   │       ├── database.py   # Engine, SessionLocal, Base
+│   │       ├── config.py     # Pydantic settings
+│   │       └── main.py       # FastAPI entrypoint
+│   ├── pyproject.toml        # FastAPI + dev tools configuration
+│   ├── .pre-commit-config.yaml
+│   └── tests/
+│       └── ...
+│
+└── seat-check/
+    ├── app/                  # Expo Router navigation + screens
+    ├── components/           # Shared UI components
+    ├── __tests__/            # Vitest test files
+    ├── package.json
+    └── tsconfig.json
 
-- **Purpose**: Establishes the Python backend foundation.
 
-- **Key Files & Configuration**:
-  - **`.pre-commit-config.yaml`** → Runs automatic checks before every commit:
-    - `ruff-check` and `ruff-format` for linting and code formatting
-    - `trailing-whitespace` and `end-of-file-fixer` to clean file endings
-    - `mypy` for strict type checking (`uv run mypy --pretty --strict src`)
-  - **`pyproject.toml`** → Defines project metadata, Python version (≥3.12), and development dependencies (`mypy`, `pytest`, `pre-commit`) for reproducibility.
-  - **`main.py`** → Minimal executable script printing `"hello"`; serves as a placeholder for the future FastAPI entry point.
-  - **`tests/test_example.py`** → Sample `pytest` file confirming that unit testing and environment setup work correctly (temporary due to pre-commit).
+- **BACKEND SETUP**:
+  Setup Project:
+    cd backend
+    uv sync
+    pre-commit install
 
-- **Functionality**:
-  - Provides automated linting, formatting, and type checking for all backend code.
-  - Enables easy test writing and validation through `pytest`.
-  - Ensures consistent standards across all developer environments.
+  Run Server:
+    uv run fastapi dev src/app/main.py
 
-- **Usage**:
-  1. Navigate to the backend directory → `cd backend`
-  2. Install dependencies → `uv sync` _(or `pip install -r requirements.txt`)_
-  3. Enable pre-commit hooks → `pre-commit install`
-  4. Run type checks → `uv run mypy --pretty --strict src`
-  5. Run tests → `pytest`
-  6. Execute backend script → `python main.py`
+  Run Type Checking:
+    uv run mypy --pretty --strict src
 
----
+  Run Tests:
+    pytest
 
-### 2. **Frontend (`seat-check/`)**
 
-**Purpose**: Establishes the testing foundation for the React Native (Expo) mobile app.
+- **Frontend SETUP**:
+  Setup Project:
+    cd seat-check
+    npm install
 
-**Key Files & Configuration**:
+  Run App:
+    npx expo start
 
-- `package.json` → defines test script with **Vitest** (`"test": "vitest"`).
-- `tsconfig.json`, `eslint.config.js` → shared TypeScript + lint config.
-- (Add tests under `__tests__/` or alongside components as `*.test.ts` / `*.test.tsx`.)
-
-**Functionality**:
-
-- Enables unit tests for TypeScript utilities and React Native components.
-- Integrates with CI (GitHub Actions runs `npm test` in `seat-check/`).
-- Can be extended with `@testing-library/react-native` to test screens, navigation, and interactions.
-- Mock backend calls to isolate UI behavior.
-
-**Usage**:
-
-1. Navigate to the mobile app: `bash`, `cd seat-check`
-2. Install dependencies: `npm install`
-3. Run tests: `npm test`
-4. Optional watch / coverage: `npm test -- --watch`, `npx vitest run --coverage`
-
----
-
-### 3. **Mobile Application (`f25-SeatCheck/seat-check/`)**
-
-- **Purpose**: Houses the React Native (Expo) mobile app.
-- **Key Directories**:
-  - `app/` → Screens, layouts, navigation
-  - `components/` → Reusable UI blocks
-  - `constants/` → Centralized configs (themes, etc.)
-  - `hooks/` → Custom React hooks
-  - `assets/` → Images and static resources
-  - `scripts/` → Dev utilities
-- Follows React Native conventions; separates presentation, logic, and configs.
-
----
-
-### 4. **Root (`README.md`)**
-
-- Provides project overview + onboarding instructions.
-- Keeps high-level docs accessible for new contributors.
-
----
-
-## Testing Coverage
-
-### Backend Testing
-
-**Current Statement Coverage: xx%**
-
-#### Test Suites
-
-- **`test_schema.py`** (31 unit tests) - Validates SQLAlchemy model definitions (table structure, columns, constraints, relationships, indexes). No database connection required.
-
-- **`test_postgis.py`** (15 integration tests) - Tests PostGIS spatial functionality (extension, GEOGRAPHY columns, spatial queries, GIST indexes). Requires Docker database.
-
-- **`test_health.py`** - API health check endpoints (in progress)
-
-- **`test_checkin.py`** - Check-in API endpoints (in progress)
-
-- **`test_auth_dev.py`** - Development authentication flow (in progress)
-
-#### Running Tests
-
-```bash
-cd backend
-pytest tests/ --cov=src/app --cov-report=term
-```
-
----
+  Run Tests:
+    npm test

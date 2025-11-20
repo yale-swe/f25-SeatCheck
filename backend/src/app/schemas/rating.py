@@ -1,11 +1,12 @@
+# src/app/schemas/rating.py
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RatingCreate(BaseModel):
     venue_id: int
-    occupancy: int  # 0..5
-    noise: int  # 0..5
+    occupancy: int = Field(ge=0, le=5)
+    noise: int = Field(ge=0, le=5)
     anonymous: bool = True
 
 

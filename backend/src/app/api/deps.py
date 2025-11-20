@@ -1,18 +1,22 @@
-"""Shared dependencies for API endpoints."""
+# backend/src/app/api/deps.py
+from collections.abc import Generator
 
-from typing import Generator
+from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
+
 from app.database import SessionLocal
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Dependency to get database session.
-
-    Yields:
-        Database session that will be automatically closed after use.
-    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def require_login(request: Request) -> str:
+    netid = request.session.get("netid")
+    if not netid:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return str(netid)
