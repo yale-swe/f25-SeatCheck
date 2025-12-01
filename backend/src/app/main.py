@@ -1,16 +1,17 @@
 # backend/src/app/main.py
-from __future__ import annotations
 
+from __future__ import annotations
+import os
+from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 from datetime import datetime, timezone
 
-import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+# from starlette.requests import Request
 
 from app.config import settings
 from app.api.v1 import api_router as api_v1_router
@@ -34,9 +35,6 @@ app = FastAPI(
     version=settings.app_version,
     debug=settings.debug,
 )
-from app.db import SessionLocal
-
-from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv(filename=".env"))
 
