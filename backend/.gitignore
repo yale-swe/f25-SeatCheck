@@ -66,3 +66,9 @@ Thumbs.db # Windows
 ehthumbs.db
 Icon?
 *.swp
+
+# .venv folder
+.venv/
+
+# Code editor settings file
+.vscode/

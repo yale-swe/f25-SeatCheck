@@ -15,7 +15,7 @@ from app.api.deps import get_db
 
 router = APIRouter()
 
-# ---------- image URL helper ----------
+# ---------- image URL helper (auto-matching by slug) ----------
 
 # __file__ = .../backend/src/app/api/v1/venues.py
 # parents[0]=v1, [1]=api, [2]=app, [3]=src, [4]=backend  -> backend/static
@@ -26,35 +26,59 @@ IMG_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 _slug_re = re.compile(r"[^a-z0-9]+")
 
 
-def slugify_name(name: str) -> str:
-    """'Bass Library' -> 'bass_library', 'TSAI City' -> 'tsai_city', 'SML' -> 'sml'."""
-    s = name.strip().lower()
+def slugify(text: str) -> str:
+    """Normalize names / filenames to slugs like 'bass_library'."""
+    s = text.strip().lower()
     s = _slug_re.sub("_", s).strip("_")
     return s
 
 
-def image_url_for_name(request: Request, name: str) -> str | None:
+def build_image_map() -> Dict[str, str]:
     """
-    Look in backend/static/venues for a filename whose stem matches the slug.
-    If found, return an absolute URL based on request.base_url (auto-correct host/port).
-    """
-    if not VENUE_IMG_DIR.exists():
-        return None
+    Build a map from slug -> filename from backend/static/venues.
 
-    slug = slugify_name(name)
+    Example:
+      'bass_library' -> 'bass_library.jpg'
+      'tsai_city' -> 'tsai_city.jpg'
+    """
+    mapping: Dict[str, str] = {}
+
+    if not VENUE_IMG_DIR.exists():
+        print(f"[image_url] venue image dir does not exist: {VENUE_IMG_DIR}")
+        return mapping
 
     try:
-        # Build a case-insensitive stem->filename map once per call
-        candidates = {
-            p.stem.lower(): p.name
-            for p in VENUE_IMG_DIR.iterdir()
-            if p.is_file() and p.suffix.lower() in IMG_EXTS
-        }
-    except FileNotFoundError:
-        return None
+        for p in VENUE_IMG_DIR.iterdir():
+            if not p.is_file():
+                continue
+            if p.suffix.lower() not in IMG_EXTS:
+                continue
 
-    fname = candidates.get(slug)
+            slug = slugify(p.stem)
+            mapping[slug] = p.name
+    except FileNotFoundError:
+        print(f"[image_url] error iterating {VENUE_IMG_DIR}")
+        return mapping
+
+    print(f"[image_url] loaded {len(mapping)} venue images from {VENUE_IMG_DIR}")
+    return mapping
+
+
+# Build once at import time
+IMAGE_MAP: Dict[str, str] = build_image_map()
+
+
+def image_url_for_name(request: Request, name: str) -> str | None:
+    """
+    Map a venue name to an image URL using slug matching.
+
+    'Bass Library' -> slug 'bass_library' -> 'bass_library.jpg' -> full URL.
+    """
+    slug = slugify(name)
+    fname = IMAGE_MAP.get(slug)
+
     if not fname:
+        print(f"[image_url] No image match for venue '{name}' (slug '{slug}')")
         return None
 
     base = str(request.base_url).rstrip("/")  # e.g., http://127.0.0.1:8000
@@ -98,6 +122,7 @@ ORDER BY v.name
 
 @router.get("")
 def list_venues(request: Request, db: Session = Depends(get_db)):
+    print("[venues.list_venues] running")
     rows = db.execute(OCC_SQL).mappings().all()
     out: List[Dict[str, object]] = []
     for r in rows:

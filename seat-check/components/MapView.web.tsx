@@ -15,7 +15,7 @@ type Feature = {
     avg_occupancy?: number | null; // 0–5
     avg_noise?: number | null;     // 0–5
     rating_count?: number | null;
-    image_url?: string | null;     // <— NEW
+    image_url?: string | null;
   };
 };
 type FeatureCollection = { type: "FeatureCollection"; features: Feature[] };
