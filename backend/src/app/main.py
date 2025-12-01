@@ -57,10 +57,28 @@ app.add_middleware(
 app.add_middleware(RefererLogMiddleware)
 
 # --- Static files (for venue images, etc.) ----------------------------------
+# Resolve backend/static relative to this file:
 STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
-print(f"[SeatCheck] Static dir resolved to: {STATIC_DIR}")
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+print(
+    f"[SeatCheck] Static dir resolved to: {STATIC_DIR} (exists={STATIC_DIR.exists()})"
+)
+
+if not STATIC_DIR.exists():
+    # Fail loudly in dev if the static directory is wrong/missing
+    raise RuntimeError(f"[SeatCheck] Static directory not found: {STATIC_DIR}")
+
+# Mount /static so /static/venues/... is served from backend/static/venues/...
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# Small debug endpoint to confirm what FastAPI sees
+@app.get("/debug/static", tags=["debug"])
+def debug_static():
+    return {
+        "static_dir": str(STATIC_DIR),
+        "exists": STATIC_DIR.exists(),
+    }
+
 
 # --- Routers -----------------------------------------------------------------
 # Auth (dev login / CAS hook)

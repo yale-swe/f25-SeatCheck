@@ -11,6 +11,7 @@ class Venue(BaseModel):
     capacity: int
     lat: float
     lon: float
+    image_url: Optional[str] = None
 
 
 class VenueWithMetrics(Venue):

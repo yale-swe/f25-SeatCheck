@@ -31,6 +31,9 @@ class Venue(Base):
         nullable=False,
     )
 
+    # New: optional URL/path to a static image for this venue
+    image_url: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
+
     # Provenance / external refs
     source: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="seed")
     ext_id: Mapped[Optional[str]] = mapped_column(sa.Text, nullable=True)
@@ -130,4 +133,7 @@ class Rating(Base):
     venue: Mapped["Venue"] = relationship("Venue", back_populates="ratings")
 
     def __repr__(self) -> str:
-        return f"<Rating id={self.id} venue_id={self.venue_id} occ={self.occupancy} noise={self.noise}>"
+        return (
+            f"<Rating id={self.id} venue_id={self.venue_id} "
+            f"occ={self.occupancy} noise={self.noise}>"
+        )

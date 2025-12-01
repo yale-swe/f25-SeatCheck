@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useTheme } from '@/theme/useTheme';
 import { API, fetchJSON } from '@/constants/api';
+import { banditService, BUTTON_VARIANTS, ButtonVariant } from '@/services/MultiArmedBanditService';
 
 type NoiseLevel = 'silent' | 'quiet' | 'moderate' | 'loud';
 const noiseMap: Record<NoiseLevel, number> = { silent: 0, quiet: 2, moderate: 3, loud: 5 };
@@ -34,6 +35,16 @@ export default function CheckInScreen() {
   const [occupancy, setOccupancy] = useState<number>(3);
   const [noise, setNoise] = useState<NoiseLevel>('moderate');
   const [busy, setBusy] = useState(false);
+
+  // multi-armed bandit state for the submit button variant
+  const [buttonVariant, setButtonVariant] = useState<ButtonVariant>('A');
+
+  // On mount: choose a variant and record an "impression"
+  useEffect(() => {
+    const variant = banditService.selectVariant();
+    setButtonVariant(variant);
+    banditService.recordImpression(variant);
+  }, []);
 
   const loadVenues = useCallback(async () => {
     try {
@@ -64,6 +75,10 @@ export default function CheckInScreen() {
     if (!selectedId) {
       return Alert.alert('Pick a location', 'Please choose where you are.');
     }
+
+    // record a "conversion" for the current variant
+    await banditService.recordConversion(buttonVariant);
+
     try {
       setBusy(true);
 
@@ -109,6 +124,8 @@ export default function CheckInScreen() {
     }
   };
 
+  const buttonConfig = BUTTON_VARIANTS[buttonVariant];
+
   if (loading) {
     return (
       <View style={[s.page, s.center, { backgroundColor: colors.bg }]}>
@@ -119,13 +136,20 @@ export default function CheckInScreen() {
   }
 
   return (
-    <ScrollView style={[s.page, { backgroundColor: colors.bg }]} contentContainerStyle={{ padding: 16, gap: 16 }}>
+    <ScrollView
+      style={[s.page, { backgroundColor: colors.bg }]}
+      contentContainerStyle={{ padding: 16, gap: 16 }}
+    >
       {/* Location */}
       <View>
         <Text style={[s.sectionTitle, { color: colors.text }]}>Location</Text>
         <View style={[s.selectBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[s.selectLabel, { color: colors.textDim }]}>Choose a place</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8 }}
+          >
             {venues.map((v) => {
               const active = v.id === selectedId;
               return (
@@ -220,13 +244,22 @@ export default function CheckInScreen() {
         </View>
       </View>
 
-      {/* Submit */}
+      {/* Submit button styled + labeled according to the bandit variant */}
       <Pressable
-        style={[s.primaryBtn, { backgroundColor: colors.primary }, busy && { opacity: 0.6 }]}
+        style={[
+          s.primaryBtn,
+          {
+            backgroundColor: buttonConfig.backgroundColor,
+            borderRadius: buttonConfig.borderRadius,
+          },
+          busy && { opacity: 0.6 },
+        ]}
         disabled={busy}
         onPress={submit}
       >
-        <Text style={s.primaryBtnText}>{busy ? 'Submitting…' : 'Submit check-in'}</Text>
+        <Text style={s.primaryBtnText}>
+          {busy ? 'Submitting…' : buttonConfig.text}
+        </Text>
       </Pressable>
 
       <View style={{ height: 24 }} />
