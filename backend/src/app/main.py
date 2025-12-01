@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Generator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
+from app.database import SessionLocal
 from app.config import settings
 from app.api.v1 import api_router as api_v1_router
 from app.api import auth as auth_router
@@ -35,6 +37,16 @@ app = FastAPI(
     version=settings.app_version,
     debug=settings.debug,
 )
+
+
+# --- DB dependency (needed by tests/mypy) -----------------------------------
+def get_db() -> Generator:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 # --- CORS --------------------------------------------------------------------
 app.add_middleware(
