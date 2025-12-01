@@ -110,29 +110,36 @@ f25-SeatCheck/
     └── tsconfig.json
 
 
-- **BACKEND SETUP**:
-  Setup Project:
-    cd backend
-    uv sync
-    pre-commit install
+- **To run SEATCHECK Locally**:
+  Open 2 Terminal Windows.
 
-  Run Server:
-    uv run fastapi dev src/app/main.py
+  Complete the two setups:
 
-  Run Type Checking:
-    uv run mypy --pretty --strict src
+    - **BACKEND SETUP**:
+      Setup Project:
+        cd backend
+        .\.venv\Scripts\activate
 
-  Run Tests:
-    pytest
+      Check Postgres:
+        net start postgresql-x64-18
+
+      Run Server:
+        uvicorn app.main:app --reload
+
+      Run Type Checking:
+        uv run mypy --pretty --strict src
+
+      Run Tests:
+        pytest
 
 
-- **Frontend SETUP**:
-  Setup Project:
-    cd seat-check
-    npm install
+    - **Frontend SETUP**:
+      Setup Project:
+        cd seat-check
+        npm install
 
-  Run App:
-    npx expo start
+      Run App:
+        npx expo start
 
-  Run Tests:
-    npm test
+      Run Tests:
+        npm test
