@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql+psycopg2://seatcheck:seatcheck@db:5432/seatcheck
       APP_BASE: http://localhost:8081
       DEV_AUTH: "1"
+      CORS_ALLOWED_ORIGINS: "http://localhost:8081,http://127.0.0.1:8081"
       PYTHONPATH: /app/src
     ports:
       - "8000:8000"

@@ -34,9 +34,14 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _post_process(self) -> "Settings":
         raw = (self.allowed_origins_raw or "*").strip()
-        self.allowed_origins = (
-            ["*"] if raw == "*" else [o.strip() for o in raw.split(",") if o.strip()]
-        )
+        if raw == "*":
+            # When using credentials, can't use wildcard - default to localhost for dev
+            if self.debug:
+                self.allowed_origins = ["http://localhost:8081", "http://127.0.0.1:8081"]
+            else:
+                self.allowed_origins = ["*"]
+        else:
+            self.allowed_origins = [o.strip() for o in raw.split(",") if o.strip()]
         try:
             parsed = make_url(self.database_url)
             if not parsed.drivername.startswith("postgresql"):

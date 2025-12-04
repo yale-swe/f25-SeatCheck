@@ -62,7 +62,11 @@ export default function ExploreScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${API}/api/v1/venues`, { credentials: 'include' });
+        const { addAuthHeaders } = require('@/constants/api');
+        const r = await fetch(`${API}/api/v1/venues`, { 
+          credentials: 'include',
+          headers: addAuthHeaders(),
+        });
         if (!r.ok) return;
         const data = await r.json();
         const mapped: Venue[] = data.map((v: any) => ({
@@ -296,19 +300,21 @@ function VenueCard({
 /* helpers */
 
 async function checkIn(venue_id: number) {
+  const { addAuthHeaders } = require('@/constants/api');
   await fetch(`${API}/checkins`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ venue_id }),
   });
 }
 
 async function checkOut(venue_id: number) {
+  const { addAuthHeaders } = require('@/constants/api');
   await fetch(`${API}/checkins/checkout`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ venue_id }),
   });
 }

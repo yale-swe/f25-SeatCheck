@@ -58,11 +58,15 @@ app.add_middleware(
 )
 
 # --- Sessions ---------------------------------------------------------------
+# For localhost development with different ports, we need same_site="none"
+# Note: Some browsers require secure=True with same_site="none", but allow
+# secure=False for localhost. If this doesn't work, we may need a custom handler.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
     session_cookie="seatcheck_session",
-    same_site="lax",
+    same_site="none",  # Changed from "lax" to allow cross-origin cookies
+    max_age=86400,  # 24 hours
 )
 
 # Debug logger for legacy callers
@@ -98,6 +102,14 @@ app.include_router(auth_router.router, tags=["auth"])
 
 # Versioned API
 app.include_router(api_v1_router, prefix="/api/v1")
+
+
+# --- Root ---------------------------------------------------------------------
+@app.get("/", tags=["root"])
+def root():
+    """Root endpoint - redirects to frontend or returns API info."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=settings.app_base, status_code=302)
 
 
 # --- Health ------------------------------------------------------------------
