@@ -25,14 +25,13 @@ def test_venue_table_name():
 def test_venue_has_id_primary_key():
     id_col = Venue.__table__.columns["id"]
     assert id_col.primary_key
-    # Note: SQLAlchemy may not always set explicit .index on primary keys in metadata
     assert isinstance(id_col.type, Integer)
 
 
 # Columns & Datatypes
 def test_venue_has_lat_lon_float_columns():
-    # The current model stores coordinates in a PostGIS Geography column `geom`.
-    # Ensure `geom` exists and is a Geography type (POINT, 4326).
+    # current model stores coordinates in a PostGIS Geography column `geom`.
+
     assert "geom" in Venue.__table__.columns
     geom_col = Venue.__table__.columns["geom"]
     assert isinstance(geom_col.type, Geography)
@@ -41,31 +40,29 @@ def test_venue_has_lat_lon_float_columns():
 
 def test_venue_has_name_string_column():
     name_col = Venue.__table__.columns["name"]
-    # Name may be a TEXT or VARCHAR depending on implementation; ensure it's
-    # present, indexed and non-nullable.
+    # ensure it's present, indexed and non-nullable.
     assert not name_col.nullable
     assert name_col.index
 
 
 def test_venue_has_no_category_column():
-    # Current model does not include a separate `category` column.
+    # model does not include a separate `category` column.
     assert "category" not in Venue.__table__.columns
 
 
 def test_venue_has_optional_capacity():
     capacity_col = Venue.__table__.columns["capacity"]
-    # In the current model capacity is an Integer with a server default.
+    # capacity is an Integer with a server default.
     assert isinstance(capacity_col.type, Integer)
     assert not capacity_col.nullable
 
 
 def test_venue_has_optional_description():
-    # Current model does not include a `description` column.
     assert "description" not in Venue.__table__.columns
 
 
 def test_amenities_accessibility_hours_stored_as_json():
-    # Current model does not include amenities/accessibility/opening_hours.
+    # model does not include amenities/accessibility/opening_hours.
     assert "amenities" not in Venue.__table__.columns
     assert "accessibility" not in Venue.__table__.columns
     assert "opening_hours" not in Venue.__table__.columns
@@ -74,7 +71,7 @@ def test_amenities_accessibility_hours_stored_as_json():
 # Type Annotations
 def test_venue_type_annotations_match_columns():
     annotations = Venue.__annotations__
-    # Basic annotations exist for key mapped attributes
+    # basic annotations exist for key mapped attributes
     assert "id" in annotations
     assert "name" in annotations
     assert "geom" in annotations
@@ -82,7 +79,7 @@ def test_venue_type_annotations_match_columns():
 
 
 def test_all_expected_columns_present():
-    # Align expected columns with the current SQLAlchemy model
+    # align expected columns with the current SQLAlchemy model
     expected_columns = {
         "id",
         "name",
@@ -120,7 +117,6 @@ def test_id_is_primary_key_constraint():
 
 # Defaults
 def test_verified_has_default_false():
-    # There is no `verified` column in the current model.
     assert "verified" not in Venue.__table__.columns
 
 
@@ -167,46 +163,31 @@ def test_floating_point_equality_needs_tolerance():
 # Schema Constraints
 def test_name_has_reasonable_max_length():
     name_col = Venue.__table__.columns["name"]
-    # Model uses Text, which has no length constraint in SQLAlchemy
-    # Just ensure it's not nullable and indexed
+
+    # ensure it's not nullable and indexed
     assert not name_col.nullable
     assert name_col.index
 
 
 def test_name_at_max_length_boundary():
     name_col = Venue.__table__.columns["name"]
-    # Text fields don't have length constraints at ORM level
     assert not name_col.nullable
-
-
-def test_description_longer_than_name():
-    # Current model does not have description column
-    # Skip this test
-    pass
-
-
-def test_description_at_max_length_boundary():
-    # Current model does not have description column
-    # Skip this test
-    pass
 
 
 def test_image_url_allows_long_paths():
     url_col = Venue.__table__.columns["image_url"]
-    # The model uses text for image_url (no length restriction) and allows nulls
+    #  model uses text for image_url (no length restriction) and allows nulls
     assert url_col.nullable
 
 
 def test_capacity_no_check_constraint_at_db_level():
     capacity_col = Venue.__table__.columns["capacity"]
-    # Capacity is NOT nullable in the current model (has server default of 100)
+    # cap is NOT nullable in the current model (has server default of 100)
     assert not capacity_col.nullable
 
 
 def test_coordinates_no_range_constraint_at_db_level():
     geom_col = Venue.__table__.columns["geom"]
-    # Model uses PostGIS Geography, which has inherent range constraints
-    # but they're not enforced at SQLAlchemy level
     assert isinstance(geom_col.type, Geography)
     assert not geom_col.nullable
 
@@ -239,8 +220,7 @@ def test_checkin_foreign_key_has_cascade_delete():
 # Index Strategy
 def test_venue_has_indexed_columns():
     indexed_cols = {col.name for col in Venue.__table__.columns if col.index}
-    # In the current model, only 'name' is explicitly indexed
-    # (id is primary key, others may not be indexed at ORM level)
+
     assert "name" in indexed_cols
 
 
