@@ -277,6 +277,13 @@ def client(mock_db_session):
 @pytest.fixture
 def authenticated_client(client):
     """Provide an authenticated client using dev login."""
-    # Call dev login without following redirects to avoid redirect loops
-    # Session cookie should now be set
+    # Call dev login to set session cookie
+    client.get("/auth/dev/login")
+    # Ensure any existing active checkin for the dev user is cleared so tests start clean
+    try:
+        client.post("/api/v1/checkins/checkout")
+    except Exception:
+        # ignore any errors here; it's best-effort to leave a clean state
+        pass
+    # The response should set a session cookie
     return client

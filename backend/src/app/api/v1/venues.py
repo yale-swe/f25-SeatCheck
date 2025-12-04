@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_login
 
 router = APIRouter()
 
@@ -121,7 +121,9 @@ ORDER BY v.name
 
 
 @router.get("")
-def list_venues(request: Request, db: Session = Depends(get_db)):
+def list_venues(
+    request: Request, netid: str = Depends(require_login), db: Session = Depends(get_db)
+):
     print("[venues.list_venues] running")
     rows = db.execute(OCC_SQL).mappings().all()
     out: List[Dict[str, object]] = []
@@ -147,8 +149,47 @@ def list_venues(request: Request, db: Session = Depends(get_db)):
     return out
 
 
-@router.get("/.geojson")
-def venues_geojson(request: Request, db: Session = Depends(get_db)):
+@router.get("/with_occupancy")
+def venues_with_occupancy(
+    request: Request,
+    netid: str = Depends(require_login),
+    db: Session = Depends(get_db),
+    window: int = 120,
+):
+    """Get venues with occupancy metrics (alias for /venues for backward compatibility)."""
+    # For now, ignore the window parameter and use the standard OCC_SQL
+    rows = db.execute(OCC_SQL).mappings().all()
+    out: List[Dict[str, object]] = []
+    for r in rows:
+        capacity = r["capacity"]
+        occ = int(r["occupancy"] or 0)
+        ratio = (occ / capacity) if capacity else 0.0
+        recent_count = int(r["rating_count"] or 0)
+        availability = ratio  # 0-1 scale
+        out.append(
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "capacity": capacity,
+                "occupancy": occ,
+                "ratio": ratio,
+                "avg_occupancy": r["avg_occupancy"],
+                "avg_noise": r["avg_noise"],
+                "rating_count": r["rating_count"],
+                "recent_count": recent_count,
+                "availability": availability,
+                "image_url": image_url_for_name(request, r["name"]),
+            }
+        )
+    return out
+
+
+@router.get("/geojson")
+def venues_geojson(
+    request: Request, netid: str = Depends(require_login), db: Session = Depends(get_db)
+):
     rows = db.execute(OCC_SQL).mappings().all()
     features: List[Dict[str, object]] = []
     for r in rows:
@@ -173,3 +214,59 @@ def venues_geojson(request: Request, db: Session = Depends(get_db)):
             }
         )
     return {"type": "FeatureCollection", "features": features}
+
+
+@router.get("/{venue_id}/stats")
+def venue_stats(
+    venue_id: int,
+    request: Request,
+    netid: str = Depends(require_login),
+    db: Session = Depends(get_db),
+    minutes: int = 120,
+):
+    """Get detailed stats for a specific venue."""
+    row = db.execute(OCC_SQL).mappings().all()
+
+    # Find the venue in results
+    venue_data = None
+    for r in row:
+        if r["id"] == venue_id:
+            venue_data = r
+            break
+
+    if not venue_data:
+        # Return stats for non-existent venue with defaults
+        return {
+            "venue_id": venue_id,
+            "name": None,
+            "lat": None,
+            "lon": None,
+            "capacity": None,
+            "occupancy": 0,
+            "ratio": 0.0,
+            "avg_occupancy": None,
+            "avg_noise": None,
+            "rating_count": 0,
+            "availability": 0.0,
+            "recent_count": 0,
+        }
+
+    capacity = venue_data["capacity"]
+    occ = int(venue_data["occupancy"] or 0)
+    ratio = (occ / capacity) if capacity else 0.0
+    availability = ratio
+
+    return {
+        "venue_id": venue_id,
+        "name": venue_data["name"],
+        "lat": venue_data["lat"],
+        "lon": venue_data["lon"],
+        "capacity": capacity,
+        "occupancy": occ,
+        "ratio": ratio,
+        "avg_occupancy": venue_data["avg_occupancy"],
+        "avg_noise": venue_data["avg_noise"],
+        "rating_count": venue_data["rating_count"],
+        "availability": availability,
+        "recent_count": venue_data.get("recent_count", 0),
+    }

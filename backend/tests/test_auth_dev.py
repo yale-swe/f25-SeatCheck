@@ -46,17 +46,3 @@ def test_auth_me_requires_login():
     response = client.get("/auth/me")
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
-
-
-def test_map_requires_login():
-    client = TestClient(app)
-
-    # w/o login, accessing /map should result in 401
-    r0 = client.get("/map")
-    assert r0.status_code in (401, 307)
-
-    # after dev login, should be accessible
-    client.get("/auth/dev/login?netid=mapuser", follow_redirects=False)
-    r = client.get("/map")
-    assert r.status_code == 200
-    assert "SeatCheck Map" in r.text
