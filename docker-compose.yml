@@ -9,8 +9,11 @@ services:
       POSTGRES_PASSWORD: seatcheck
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    # store the Postgres data in tmpfs (in-memory) so the DB is ephemeral
+    # and is recreated fresh each time the container starts. Useful for
+    # development/demo environments where persistence is not desired.
+    tmpfs:
+      - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U seatcheck -d seatcheck"]
       interval: 10s
@@ -37,8 +40,6 @@ services:
       - ./backend:/app
     command: >
       bash -c "
-        echo 'Waiting for database to be ready...' &&
-        sleep 2 &&
         echo 'Running Alembic migrations...' &&
         uv run alembic upgrade head &&
         echo 'Running database seed...' &&
@@ -65,6 +66,3 @@ services:
       - /app/node_modules
     stdin_open: true
     tty: true
-
-volumes:
-  postgres_data:
