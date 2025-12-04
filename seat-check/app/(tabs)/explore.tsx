@@ -6,8 +6,7 @@ import { Image } from 'expo-image';
 import { Fonts } from '@/constants/theme';
 import type React from 'react';
 import { useTheme } from '@/theme/useTheme';
-
-const API = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000';
+import { API, addAuthHeaders } from '@/constants/api';
 const ThemedView = View;
 
 const webSelectStyle: React.CSSProperties = {
@@ -62,8 +61,7 @@ export default function ExploreScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const { addAuthHeaders } = require('@/constants/api');
-        const r = await fetch(`${API}/api/v1/venues`, { 
+        const r = await fetch(API.venues, {
           credentials: 'include',
           headers: addAuthHeaders(),
         });
@@ -300,8 +298,7 @@ function VenueCard({
 /* helpers */
 
 async function checkIn(venue_id: number) {
-  const { addAuthHeaders } = require('@/constants/api');
-  await fetch(`${API}/checkins`, {
+  await fetch(API.checkins, {
     method: 'POST',
     credentials: 'include',
     headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -310,8 +307,7 @@ async function checkIn(venue_id: number) {
 }
 
 async function checkOut(venue_id: number) {
-  const { addAuthHeaders } = require('@/constants/api');
-  await fetch(`${API}/checkins/checkout`, {
+  await fetch(API.checkout, {
     method: 'POST',
     credentials: 'include',
     headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
