@@ -150,7 +150,7 @@ f25-SeatCheck/
 
       Run Tests:
         pytest
-        
+
       For more detailed testing documentation, see [backend/tests/README.md](backend/tests/README.md)
 
 
