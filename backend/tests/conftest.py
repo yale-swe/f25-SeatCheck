@@ -280,4 +280,10 @@ def authenticated_client(client):
     # Call dev login without following redirects to avoid redirect loops
     # Session cookie should now be set
     client.get("/auth/dev/login?netid=dev001", follow_redirects=False)
+    # Ensure any existing active checkin for the dev user is cleared so tests start clean
+    try:
+        client.post("/api/v1/checkins/checkout")
+    except Exception:
+        # ignore any errors here; it's best-effort to leave a clean state
+        pass
     return client

@@ -39,6 +39,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - backend_venv:/app/.venv
     command: >
       bash -c "
         echo 'Running Alembic migrations...' &&
@@ -67,3 +68,6 @@ services:
       - /app/node_modules
     stdin_open: true
     tty: true
+
+volumes:
+  backend_venv:

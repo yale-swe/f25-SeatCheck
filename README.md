@@ -143,3 +143,18 @@ f25-SeatCheck/
 
       Run Tests:
         npm test
+
+
+## Metrics Milestone: Multi-Armed Bandit Button Testing
+
+We implemented a Multi-Armed Bandit algorithm to optimize the check-in button on our Check-In page.
+
+**Implementation:**
+* **Target:** Submit button on Check-In screen (`seat-check/app/(tabs)/checkin.tsx`)
+* **3 Variants:** Blue button ("Submit check-in"), Green button ("Check In Now"), Orange button ("Submit")
+* **Algorithm:** Epsilon-greedy Multi-Armed Bandit - shows all variants equally at first, then increasingly favors the best-performing one based on click-through rate
+* **Tracking:** Records impressions (views) and conversions (clicks) in browser localStorage
+
+**Files:**
+* `seat-check/services/MultiArmedBanditService.ts` - Core algorithm
+* `seat-check/app/(tabs)/checkin.tsx` - Integration

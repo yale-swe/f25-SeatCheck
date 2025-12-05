@@ -210,7 +210,7 @@ def test_protected_endpoint_requires_auth(client):
     fresh_client = TestClient(app)
 
     # Try accessing protected endpoint without auth
-    response = fresh_client.get("/venues")
+    response = fresh_client.get("/api/v1/venues")
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
@@ -228,6 +228,6 @@ def test_session_persistence(client):
     assert response.status_code == 200
     assert response.json()["netid"] == "sessionuser"
 
-    # Make yet another request
-    response = client.get("/venues")
+    # Make yet another request to a protected endpoint
+    response = client.get("/api/v1/venues")
     assert response.status_code == 200

@@ -3,7 +3,7 @@
 
 def test_list_venues_authenticated(authenticated_client):
     """Test listing all venues when authenticated."""
-    response = authenticated_client.get("/venues")
+    response = authenticated_client.get("/api/v1/venues")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -25,13 +25,13 @@ def test_list_venues_unauthenticated(client):
 
     fresh_client = TestClient(app)
 
-    response = fresh_client.get("/venues")
+    response = fresh_client.get("/api/v1/venues")
     assert response.status_code == 401
 
 
 def test_venues_with_occupancy_default_window(authenticated_client):
     """Test venues with occupancy using default time window."""
-    response = authenticated_client.get("/venues/with_occupancy")
+    response = authenticated_client.get("/api/v1/venues/with_occupancy")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -52,7 +52,9 @@ def test_venues_with_occupancy_default_window(authenticated_client):
 
 def test_venues_with_occupancy_custom_window(authenticated_client):
     """Test venues with occupancy using custom time window."""
-    response = authenticated_client.get("/venues/with_occupancy", params={"window": 60})
+    response = authenticated_client.get(
+        "/api/v1/venues/with_occupancy", params={"window": 60}
+    )
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -61,14 +63,16 @@ def test_venues_with_occupancy_custom_window(authenticated_client):
 def test_venues_with_occupancy_invalid_window(authenticated_client):
     """Test venues with occupancy using invalid time window."""
     response = authenticated_client.get(
-        "/venues/with_occupancy", params={"window": "invalid"}
+        "/api/v1/venues/with_occupancy", params={"window": "invalid"}
     )
     assert response.status_code == 422  # Validation error
 
 
 def test_venues_with_occupancy_zero_window(authenticated_client):
     """Test venues with occupancy using zero time window."""
-    response = authenticated_client.get("/venues/with_occupancy", params={"window": 0})
+    response = authenticated_client.get(
+        "/api/v1/venues/with_occupancy", params={"window": 0}
+    )
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
@@ -77,7 +81,7 @@ def test_venues_with_occupancy_zero_window(authenticated_client):
 def test_venues_with_occupancy_large_window(authenticated_client):
     """Test venues with occupancy using large time window."""
     response = authenticated_client.get(
-        "/venues/with_occupancy", params={"window": 1440}
+        "/api/v1/venues/with_occupancy", params={"window": 1440}
     )  # 24 hours
     assert response.status_code == 200
     data = response.json()
@@ -86,7 +90,7 @@ def test_venues_with_occupancy_large_window(authenticated_client):
 
 def test_venues_geojson(authenticated_client):
     """Test GeoJSON format venue listing."""
-    response = authenticated_client.get("/venues.geojson")
+    response = authenticated_client.get("/api/v1/venues/geojson")
     assert response.status_code == 200
     data = response.json()
 
@@ -115,14 +119,14 @@ def test_venues_geojson_unauthenticated(client):
 
     fresh_client = TestClient(app)
 
-    response = fresh_client.get("/venues.geojson")
+    response = fresh_client.get("/api/v1/venues/geojson")
     assert response.status_code == 401
 
 
 def test_venue_stats_by_id(authenticated_client):
     """Test getting stats for a specific venue."""
     # First get a venue ID
-    venues_response = authenticated_client.get("/venues")
+    venues_response = authenticated_client.get("/api/v1/venues")
     venues = venues_response.json()
 
     if len(venues) > 0:
@@ -145,7 +149,7 @@ def test_venue_stats_by_id(authenticated_client):
 
 def test_venue_stats_custom_window(authenticated_client):
     """Test getting venue stats with custom time window."""
-    venues_response = authenticated_client.get("/venues")
+    venues_response = authenticated_client.get("/api/v1/venues")
     venues = venues_response.json()
 
     if len(venues) > 0:
@@ -192,15 +196,15 @@ def test_venue_stats_unauthenticated(client):
 def test_venues_data_consistency(authenticated_client):
     """Test that venue data is consistent across endpoints."""
     # Get venues from basic endpoint
-    venues_response = authenticated_client.get("/venues")
+    venues_response = authenticated_client.get("/api/v1/venues")
     venues = venues_response.json()
 
     # Get venues with occupancy
-    occupancy_response = authenticated_client.get("/venues/with_occupancy")
+    occupancy_response = authenticated_client.get("/api/v1/venues/with_occupancy")
     venues_with_occupancy = occupancy_response.json()
 
     # Get GeoJSON
-    geojson_response = authenticated_client.get("/venues.geojson")
+    geojson_response = authenticated_client.get("/api/v1/venues/geojson")
     geojson = geojson_response.json()
 
     # Should have same number of venues
@@ -218,7 +222,7 @@ def test_venues_data_consistency(authenticated_client):
 
 def test_venues_capacity_values(authenticated_client):
     """Test that venue capacity values are reasonable."""
-    response = authenticated_client.get("/venues")
+    response = authenticated_client.get("/api/v1/venues")
     venues = response.json()
 
     for venue in venues:
@@ -230,7 +234,7 @@ def test_venues_capacity_values(authenticated_client):
 
 def test_venues_coordinates_valid(authenticated_client):
     """Test that venue coordinates are valid."""
-    response = authenticated_client.get("/venues")
+    response = authenticated_client.get("/api/v1/venues")
     venues = response.json()
 
     for venue in venues:
@@ -245,7 +249,7 @@ def test_venues_coordinates_valid(authenticated_client):
 
 def test_venues_geojson_coordinates_order(authenticated_client):
     """Test that GeoJSON coordinates are in [lon, lat] order."""
-    response = authenticated_client.get("/venues.geojson")
+    response = authenticated_client.get("/api/v1/venues/geojson")
     geojson = response.json()
 
     for feature in geojson["features"]:
@@ -259,7 +263,7 @@ def test_venues_geojson_coordinates_order(authenticated_client):
 
 def test_venues_occupancy_metrics_bounds(authenticated_client):
     """Test that occupancy metrics are within valid bounds."""
-    response = authenticated_client.get("/venues/with_occupancy")
+    response = authenticated_client.get("/api/v1/venues/with_occupancy")
     venues = response.json()
 
     for venue in venues:
