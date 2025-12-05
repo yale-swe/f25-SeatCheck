@@ -45,7 +45,7 @@ export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> 
     "Content-Type": "application/json",
     ...(init?.headers || {}),
   });
-  
+
   const res = await fetch(url, {
     credentials: "include",
     headers,

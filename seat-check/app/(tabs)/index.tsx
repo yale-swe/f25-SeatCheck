@@ -26,7 +26,7 @@ export default function HomeScreen() {
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
-        const r = await fetch(`${API}/auth/me`, { 
+        const r = await fetch(`${API}/auth/me`, {
           credentials: 'include',
           headers,
         });

@@ -16,7 +16,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    fetch(`${API}/auth/me`, { 
+    fetch(`${API}/auth/me`, {
       credentials: 'include',
       headers,
     })

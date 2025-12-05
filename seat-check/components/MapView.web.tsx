@@ -204,8 +204,8 @@ export default function MapViewWeb() {
       const pollId = window.setInterval(drawOnce, 15000);
       const beatId = window.setInterval(async () => {
         const { addAuthHeaders } = await import("@/constants/api");
-        fetch(API.heartbeat, { 
-          method: "POST", 
+        fetch(API.heartbeat, {
+          method: "POST",
           credentials: "include",
           headers: addAuthHeaders(),
         }).catch(() => {});
