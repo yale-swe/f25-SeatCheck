@@ -54,7 +54,7 @@ This README documents the tech stack, repo structure, dev workflow, and future r
 - **Pydantic v2** → request/response validation
 - **Ruff** → linting + formatting
 - **mypy** (strict) → static type checking
-- **pytest** → test runner
+- **pytest** → test runner (see [backend/tests/README.md](backend/tests/README.md) for testing documentation)
 - **Pre-commit** → automated formatting & lint guards
   REST endpoints include:
     POST /api/v1/ratings – occupancy/noise rating submission
@@ -150,6 +150,8 @@ f25-SeatCheck/
 
       Run Tests:
         pytest
+        
+      For more detailed testing documentation, see [backend/tests/README.md](backend/tests/README.md)
 
 
     - **Frontend SETUP**:
