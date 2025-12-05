@@ -18,7 +18,9 @@ def test_dev_login_and_whoami():
     # dev login
     response = client.get("/auth/dev/login?netid=dev001", follow_redirects=False)
     assert response.status_code == 302  # redirect
-    assert response.headers["location"].endswith("/")  # redirect to home
+    # redirect should include token parameter
+    assert "token=" in response.headers["location"]
+    assert response.headers["location"].startswith("http://localhost:8081/")
 
     # whoami (session should persist)
     whoami = client.get("/debug/whoami", follow_redirects=False)
@@ -42,6 +44,8 @@ def test_dev_login_and_whoami():
 
 
 def test_auth_me_requires_login():
+    # Clear any existing session first
+    client.post("/auth/dev/logout", follow_redirects=False)
     # without login, /auth/me should raise 401
     response = client.get("/auth/me")
     assert response.status_code == 401

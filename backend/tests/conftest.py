@@ -279,4 +279,5 @@ def authenticated_client(client):
     """Provide an authenticated client using dev login."""
     # Call dev login without following redirects to avoid redirect loops
     # Session cookie should now be set
+    client.get("/auth/dev/login?netid=dev001", follow_redirects=False)
     return client
