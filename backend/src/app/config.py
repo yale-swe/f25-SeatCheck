@@ -36,7 +36,10 @@ class Settings(BaseSettings):
         if raw == "*":
             # When using credentials, can't use wildcard - default to localhost for dev
             if self.debug:
-                self.allowed_origins = ["http://localhost:8081", "http://127.0.0.1:8081"]
+                self.allowed_origins = [
+                    "http://localhost:8081",
+                    "http://127.0.0.1:8081",
+                ]
             else:
                 self.allowed_origins = ["*"]
         else:

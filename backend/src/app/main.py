@@ -109,6 +109,7 @@ app.include_router(api_v1_router, prefix="/api/v1")
 def root():
     """Root endpoint - redirects to frontend or returns API info."""
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url=settings.app_base, status_code=302)
 
 

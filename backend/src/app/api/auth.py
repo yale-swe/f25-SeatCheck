@@ -36,9 +36,7 @@ def cas_login(request: Request) -> RedirectResponse:
 async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
     svc = urllib.parse.quote(_service_url(request), safe="")
     ticket_quoted = urllib.parse.quote(ticket, safe="")
-    url = (
-        f"{CAS_BASE}/p3/serviceValidate?service={svc}&ticket={ticket_quoted}"
-    )
+    url = f"{CAS_BASE}/p3/serviceValidate?service={svc}&ticket={ticket_quoted}"
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(url)
     if resp.status_code != 200:
@@ -82,7 +80,7 @@ def dev_login(request: Request, netid: str = "dev001"):
     redirect_url = f"{APP_BASE}/?token={token}"
     print(f"[Auth]   Redirecting to {redirect_url}")
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
-    print(f"[Auth]   Session cookie will be set: seatcheck_session")
+    print("[Auth]   Session cookie will be set: seatcheck_session")
     return response
 
 
@@ -117,17 +115,15 @@ def me(request: Request):
     origin = request.headers.get("origin", "none")
     cookies = request.cookies
     session_keys = list(request.session.keys())
-    print(f"[Auth] /auth/me called:")
+    print("[Auth] /auth/me called:")
     print(f"[Auth]   netid={netid}")
     print(f"[Auth]   session_keys={session_keys}")
     print(f"[Auth]   origin={origin}")
     print(f"[Auth]   cookies_received={list(cookies.keys())}")
-    auth_header_val = (
-        "Bearer ..." if request.headers.get("authorization") else "none"
-    )
+    auth_header_val = "Bearer ..." if request.headers.get("authorization") else "none"
     print(f"[Auth]   auth_header={auth_header_val}")
     if not netid:
-        print(f"[Auth]   Not authenticated - no netid in session or token")
+        print("[Auth]   Not authenticated - no netid in session or token")
         raise HTTPException(status_code=401, detail="Not authenticated")
     print(f"[Auth]   Authenticated as {netid}")
     return {"netid": netid}
@@ -149,5 +145,5 @@ def whoami(request: Request):
             "origin": request.headers.get("origin"),
             "referer": request.headers.get("referer"),
             "host": request.headers.get("host"),
-        }
+        },
     }
