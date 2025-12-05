@@ -21,7 +21,15 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch(`${API}/auth/me`, { credentials: 'include' });
+        const token = typeof window !== 'undefined' ? localStorage.getItem('seatcheck_auth_token') : null;
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const r = await fetch(`${API}/auth/me`, {
+          credentials: 'include',
+          headers,
+        });
         const data = r.ok ? await r.json() : null;
         if (!cancelled) setMe(data);
       } catch {

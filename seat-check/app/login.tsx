@@ -17,10 +17,50 @@ export default function Login() {
   const demoUsers = ["dev001", "cs1234", "ay123", "yx999", "testnetid"];
 
   useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setMe)
-      .catch(() => setMe(null))
+    // Check for token in URL (from redirect after dev login)
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      if (token) {
+        console.log("[Login] Found token in URL, storing in localStorage");
+        localStorage.setItem("seatcheck_auth_token", token);
+        // Remove token from URL
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    }
+
+    console.log("[Login] Checking auth status...");
+    const token = typeof window !== "undefined" ? localStorage.getItem("seatcheck_auth_token") : null;
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    fetch(`${API}/auth/me`, {
+      credentials: "include",
+      headers,
+    })
+      .then((r) => {
+        console.log(`[Login] /auth/me response: ${r.status} ${r.statusText}`);
+        if (r.ok) {
+          return r.json();
+        } else {
+          console.log(`[Login] Auth check failed: ${r.status}`);
+          // Clear invalid token
+          if (token && typeof window !== "undefined") {
+            localStorage.removeItem("seatcheck_auth_token");
+          }
+          return null;
+        }
+      })
+      .then((data) => {
+        console.log(`[Login] Auth result:`, data);
+        setMe(data);
+      })
+      .catch((err) => {
+        console.error("[Login] Auth check error:", err);
+        setMe(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -34,8 +74,12 @@ export default function Login() {
     const who = (chosen ?? netid).trim();
     if (!who) return;
     const url = `${API}/auth/dev/login?netid=${encodeURIComponent(who)}`;
-    if (Platform.OS === "web") window.location.assign(url);
-    else Linking.openURL(url);
+    console.log(`[Login] Dev login: navigating to ${url}`);
+    if (Platform.OS === "web") {
+      window.location.assign(url);
+    } else {
+      Linking.openURL(url);
+    }
   };
 
   const containerStyle: React.CSSProperties = {
@@ -83,6 +127,10 @@ export default function Login() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            // Clear token from localStorage
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("seatcheck_auth_token");
+            }
             fetch(`${API}/auth/logout`, {
               method: "POST",
               credentials: "include",

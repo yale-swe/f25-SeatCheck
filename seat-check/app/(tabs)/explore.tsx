@@ -6,8 +6,7 @@ import { Image } from 'expo-image';
 import { Fonts } from '@/constants/theme';
 import type React from 'react';
 import { useTheme } from '@/theme/useTheme';
-
-const API = process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000';
+import { API, addAuthHeaders } from '@/constants/api';
 const ThemedView = View;
 
 const webSelectStyle: React.CSSProperties = {
@@ -62,7 +61,10 @@ export default function ExploreScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${API}/api/v1/venues`, { credentials: 'include' });
+        const r = await fetch(API.venues, {
+          credentials: 'include',
+          headers: addAuthHeaders(),
+        });
         if (!r.ok) return;
         const data = await r.json();
         const mapped: Venue[] = data.map((v: any) => ({
@@ -296,19 +298,19 @@ function VenueCard({
 /* helpers */
 
 async function checkIn(venue_id: number) {
-  await fetch(`${API}/checkins`, {
+  await fetch(API.checkins, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ venue_id }),
   });
 }
 
 async function checkOut(venue_id: number) {
-  await fetch(`${API}/checkins/checkout`, {
+  await fetch(API.checkout, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ venue_id }),
   });
 }

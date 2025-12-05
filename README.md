@@ -54,7 +54,7 @@ This README documents the tech stack, repo structure, dev workflow, and future r
 - **Pydantic v2** → request/response validation
 - **Ruff** → linting + formatting
 - **mypy** (strict) → static type checking
-- **pytest** → test runner
+- **pytest** → test runner (see [backend/tests/README.md](backend/tests/README.md) for testing documentation)
 - **Pre-commit** → automated formatting & lint guards
   REST endpoints include:
     POST /api/v1/ratings – occupancy/noise rating submission
@@ -85,29 +85,48 @@ This README documents the tech stack, repo structure, dev workflow, and future r
 
 ---
 
+```
 f25-SeatCheck/
 ├── backend/
 │   ├── alembic/              # Migration environment + versions
 │   ├── src/
 │   │   └── app/
 │   │       ├── api/
-│   │       │   └── v1/
-│   │       ├── models/       # SQLAlchemy ORM models
+│   │       │   ├── auth.py   # Authentication endpoints
+│   │       │   ├── deps.py   # FastAPI dependencies
+│   │       │   └── v1/       # Versioned API endpoints
+│   │       │       ├── checkins.py
+│   │       │       ├── health.py
+│   │       │       ├── ratings.py
+│   │       │       └── venues.py
+│   │       ├── crud/         # Database CRUD operations
+│   │       ├── schemas/      # Pydantic request/response schemas
 │   │       ├── services/     # Metrics + business logic
 │   │       ├── database.py   # Engine, SessionLocal, Base
 │   │       ├── config.py     # Pydantic settings
+│   │       ├── models.py      # SQLAlchemy ORM models
 │   │       └── main.py       # FastAPI entrypoint
-│   ├── pyproject.toml        # FastAPI + dev tools configuration
-│   ├── .pre-commit-config.yaml
-│   └── tests/
-│       └── ...
+│   ├── static/               # Static files (venue images)
+│   ├── scripts/               # Utility scripts (seed_db.py)
+│   ├── tests/                 # Test files
+│   ├── pyproject.toml         # FastAPI + dev tools configuration
+│   └── .pre-commit-config.yaml
 │
 └── seat-check/
-    ├── app/                  # Expo Router navigation + screens
-    ├── components/           # Shared UI components
-    ├── __tests__/            # Vitest test files
+    ├── app/                   # Expo Router navigation + screens
+    │   ├── (tabs)/            # Tab-based navigation screens
+    │   ├── login.tsx
+    │   └── _layout.tsx
+    ├── components/            # Shared UI components
+    ├── constants/             # API constants and helpers
+    ├── hooks/                 # React hooks
+    ├── services/              # Business logic (MultiArmedBandit)
+    ├── theme/                 # Theme provider and hooks
+    ├── tests/                 # Vitest test files
+    ├── assets/                # Images and static assets
     ├── package.json
     └── tsconfig.json
+```
 
 
 - **To run SEATCHECK Locally**:
@@ -131,6 +150,8 @@ f25-SeatCheck/
 
       Run Tests:
         pytest
+
+      For more detailed testing documentation, see [backend/tests/README.md](backend/tests/README.md)
 
 
     - **Frontend SETUP**:

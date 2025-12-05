@@ -169,17 +169,19 @@ export default function MapViewWeb() {
 
         const handle = async (action: "checkin" | "checkout", vid: number) => {
           try {
+            const { addAuthHeaders } = await import("@/constants/api");
             if (action === "checkin") {
               await fetch(API.checkins, {
                 method: "POST",
                 credentials: "include",
-                headers: { "Content-Type": "application/json" },
+                headers: addAuthHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify({ venue_id: vid }),
               });
             } else {
               await fetch(API.checkout, {
                 method: "POST",
                 credentials: "include",
+                headers: addAuthHeaders(),
               });
             }
           } finally {
@@ -200,8 +202,13 @@ export default function MapViewWeb() {
       await drawOnce();
 
       const pollId = window.setInterval(drawOnce, 15000);
-      const beatId = window.setInterval(() => {
-        fetch(API.heartbeat, { method: "POST", credentials: "include" }).catch(() => {});
+      const beatId = window.setInterval(async () => {
+        const { addAuthHeaders } = await import("@/constants/api");
+        fetch(API.heartbeat, {
+          method: "POST",
+          credentials: "include",
+          headers: addAuthHeaders(),
+        }).catch(() => {});
       }, 60000);
 
       return () => {

@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@/theme/useTheme';
-import { API, fetchJSON } from '@/constants/api';
+import { API, fetchJSON, addAuthHeaders } from '@/constants/api';
 import { banditService, BUTTON_VARIANTS, ButtonVariant } from '@/services/MultiArmedBanditService';
 
 type NoiseLevel = 'silent' | 'quiet' | 'moderate' | 'loud';
@@ -87,7 +87,7 @@ export default function CheckInScreen() {
         const r = await fetch(API.checkins, {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ venue_id: selectedId }),
         });
         if (!r.ok) {
@@ -101,7 +101,7 @@ export default function CheckInScreen() {
         const r2 = await fetch(API.ratings, {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: addAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             venue_id: selectedId,
             occupancy,              // 0–5 scale for perceived crowding

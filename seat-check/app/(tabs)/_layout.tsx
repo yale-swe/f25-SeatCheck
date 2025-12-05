@@ -11,7 +11,15 @@ const API = process.env.EXPO_PUBLIC_API_BASE ?? 'http://127.0.0.1:8000';
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [ok, setOk] = useState<boolean | null>(null);
   useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: 'include' })
+    const token = typeof window !== 'undefined' ? localStorage.getItem('seatcheck_auth_token') : null;
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    fetch(`${API}/auth/me`, {
+      credentials: 'include',
+      headers,
+    })
       .then((r) => setOk(r.ok))
       .catch(() => setOk(false));
   }, []);

@@ -32,9 +32,10 @@ export default function MapViewNative() {
     setLoading(true);
     setUnauthorized(false);
     try {
+      const { addAuthHeaders } = await import("@/constants/api");
       const res = await fetch(API.venues, {
-        // RN fetch doesn't persist browser cookies; this is here for future token auth.
         credentials: "include" as RequestCredentials,
+        headers: addAuthHeaders(),
       });
       if (res.status === 401) {
         setUnauthorized(true);
@@ -61,9 +62,10 @@ export default function MapViewNative() {
   const checkIn = useCallback(
     async (venueId: number) => {
       try {
+        const { addAuthHeaders } = await import("@/constants/api");
         const res = await fetch(API.checkins, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: addAuthHeaders({ "Content-Type": "application/json" }),
           credentials: "include" as RequestCredentials,
           body: JSON.stringify({ venue_id: venueId }),
         });

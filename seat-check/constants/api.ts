@@ -21,11 +21,34 @@ export const API = {
   ratings: `${API_PREFIX}/ratings`,
 };
 
-// Convenience fetch with cookies
+// Get auth token from localStorage (for dev auth)
+export function getAuthToken(): string | null {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("seatcheck_auth_token");
+  }
+  return null;
+}
+
+// Helper to add auth token to fetch headers
+export function addAuthHeaders(headers: HeadersInit = {}): HeadersInit {
+  const token = getAuthToken();
+  const result: HeadersInit = { ...headers };
+  if (token) {
+    result["Authorization"] = `Bearer ${token}`;
+  }
+  return result;
+}
+
+// Convenience fetch with cookies and token
 export async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = addAuthHeaders({
+    "Content-Type": "application/json",
+    ...(init?.headers || {}),
+  });
+
   const res = await fetch(url, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers,
     ...init,
   });
   if (!res.ok) {
