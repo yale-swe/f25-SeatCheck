@@ -1,6 +1,8 @@
 # backend/src/app/api/auth.py
 from __future__ import annotations
 
+import base64
+import json
 import urllib.parse
 import xml.etree.ElementTree as ET
 
@@ -67,11 +69,9 @@ def dev_login(request: Request, netid: str = "dev001"):
     print(f"[Auth] Dev login: set session netid={netid}")
     print(f"[Auth]   Origin: {origin}, Referer: {referer}")
     print(f"[Auth]   Cookies received: {list(cookies.keys())}")
-    
+
     # For localhost dev, also return token in URL to bypass cookie issues
     # Frontend will extract this and store in localStorage
-    import base64
-    import json
     token_data = {"netid": netid, "type": "dev"}
     token = base64.urlsafe_b64encode(json.dumps(token_data).encode()).decode().rstrip("=")
     redirect_url = f"{APP_BASE}/?token={token}"
@@ -93,15 +93,13 @@ def dev_logout(request: Request):
 def me(request: Request):
     # Try to get netid from session cookie first
     netid = request.session.get("netid")
-    
+
     # If no session, try Authorization header (for dev token-based auth)
     if not netid:
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
             try:
-                import base64
-                import json
                 # Add padding if needed
                 token += "=" * (4 - len(token) % 4)
                 token_data = json.loads(base64.urlsafe_b64decode(token).decode())
@@ -110,7 +108,7 @@ def me(request: Request):
                     print(f"[Auth]   Authenticated via token: {netid}")
             except Exception as e:
                 print(f"[Auth]   Token decode error: {e}")
-    
+
     origin = request.headers.get("origin", "none")
     cookies = request.cookies
     session_keys = list(request.session.keys())
