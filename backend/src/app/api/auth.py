@@ -35,7 +35,8 @@ def cas_login(request: Request) -> RedirectResponse:
 @router.get(SERVICE_PATH)
 async def cas_callback(request: Request, ticket: str) -> RedirectResponse:
     svc = urllib.parse.quote(_service_url(request), safe="")
-    url = f"{CAS_BASE}/p3/serviceValidate?service={svc}&ticket={urllib.parse.quote(ticket, safe='')}"
+    ticket_quoted = urllib.parse.quote(ticket, safe="")
+    url = f"{CAS_BASE}/p3/serviceValidate?service={svc}&ticket={ticket_quoted}"
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(url)
     if resp.status_code != 200:
@@ -73,7 +74,8 @@ def dev_login(request: Request, netid: str = "dev001"):
     # For localhost dev, also return token in URL to bypass cookie issues
     # Frontend will extract this and store in localStorage
     token_data = {"netid": netid, "type": "dev"}
-    token = base64.urlsafe_b64encode(json.dumps(token_data).encode()).decode().rstrip("=")
+    token_encoded = base64.urlsafe_b64encode(json.dumps(token_data).encode()).decode()
+    token = token_encoded.rstrip("=")
     redirect_url = f"{APP_BASE}/?token={token}"
     print(f"[Auth]   Redirecting to {redirect_url}")
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
@@ -117,7 +119,10 @@ def me(request: Request):
     print(f"[Auth]   session_keys={session_keys}")
     print(f"[Auth]   origin={origin}")
     print(f"[Auth]   cookies_received={list(cookies.keys())}")
-    print(f"[Auth]   auth_header={'Bearer ...' if request.headers.get('authorization') else 'none'}")
+    auth_header_val = (
+        "Bearer ..." if request.headers.get("authorization") else "none"
+    )
+    print(f"[Auth]   auth_header={auth_header_val}")
     if not netid:
         print(f"[Auth]   Not authenticated - no netid in session or token")
         raise HTTPException(status_code=401, detail="Not authenticated")

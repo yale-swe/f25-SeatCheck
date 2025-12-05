@@ -1,7 +1,6 @@
 # backend/src/app/config.py
 from __future__ import annotations
 
-from typing import List
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -22,7 +21,7 @@ class Settings(BaseSettings):
 
     # NOTE: changed alias to avoid collision with allowed_origins (list field)
     allowed_origins_raw: str = Field("*", alias="CORS_ALLOWED_ORIGINS")
-    allowed_origins: List[str] = []
+    allowed_origins: list[str] = []
 
     model_config = SettingsConfigDict(
         env_file=".env",
