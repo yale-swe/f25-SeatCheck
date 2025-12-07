@@ -129,41 +129,33 @@ f25-SeatCheck/
 ```
 
 
-- **To run SEATCHECK Locally**:
-  Open 2 Terminal Windows.
+- **To run Seat-Check Locally**:
 
-  Complete the two setups:
-
-    - **BACKEND SETUP**:
-      Setup Project:
-        cd backend
-        .\.venv\Scripts\activate
-
-      Check Postgres:
-        net start postgresql-x64-18
-
-      Run Server:
-        uvicorn app.main:app --reload
-
-      Run Type Checking:
-        uv run mypy --pretty --strict src
-
-      Run Tests:
-        pytest
-
-      For more detailed testing documentation, see [backend/tests/README.md](backend/tests/README.md)
-
-
-    - **Frontend SETUP**:
-      Setup Project:
-        cd seat-check
-        npm install
-
-      Run App:
-        npx expo start
-
-      Run Tests:
-        npm test
+  Start all services (database, backend, and frontend) with Docker Compose:
+  
+  First, ensure that the docker desktop app is running.
+  
+  Then, run a following command.
+  ```bash
+  docker compose up
+  ```
+  
+  This will start:
+  - PostgreSQL database with PostGIS (port 5432)
+  - FastAPI backend (port 8000)
+  - Expo frontend (port 8081)
+  
+  The backend will automatically run migrations and seed the database on startup.
+  
+  Access the application at:
+  - Frontend: http://localhost:8081
+  - Backend API: http://localhost:8000
+  - API Docs: http://localhost:8000/docs
+  
+  To stop all services:
+  ```bash
+  docker compose down
+  ```
 
 
 ## Metrics Milestone: Multi-Armed Bandit Button Testing
