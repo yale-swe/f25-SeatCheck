@@ -132,26 +132,26 @@ f25-SeatCheck/
 - **To run Seat-Check Locally**:
 
   Start all services (database, backend, and frontend) with Docker Compose:
-  
+
   First, ensure that the docker desktop app is running.
-  
+
   Then, run a following command.
   ```bash
   docker compose up
   ```
-  
+
   This will start:
   - PostgreSQL database with PostGIS (port 5432)
   - FastAPI backend (port 8000)
   - Expo frontend (port 8081)
-  
+
   The backend will automatically run migrations and seed the database on startup.
-  
+
   Access the application at:
   - Frontend: http://localhost:8081
   - Backend API: http://localhost:8000
   - API Docs: http://localhost:8000/docs
-  
+
   To stop all services:
   ```bash
   docker compose down
